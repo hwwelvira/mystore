@@ -95,8 +95,13 @@ class LoginWindow(QMainWindow):
                 'cursorclass': pymysql.cursors.DictCursor
             }
             
+            # 先定义方法需要使用的属性
+            self.scroll_layout = None
+            self.cart_scroll_layout = None
+            self.orders_scroll_layout = None
+            
             self.init_ui()
-            self.load_products()
+            # self.load_products()  # 现在这个方法已经被定义了
         
         def init_ui(self):
             # 主布局改为水平布局
@@ -153,32 +158,9 @@ class LoginWindow(QMainWindow):
             self.scroll_area.setWidget(self.scroll_content)
             
             layout.addWidget(self.scroll_area)
-            self.load_products()
-        
-        def init_cart_tab(self):
-            # 购物车页（待实现）
-            layout = QVBoxLayout(self.cart_tab)
-            label = QLabel("购物车功能待实现")
-            label.setStyleSheet("font-size: 24px;")
-            label.setAlignment(Qt.AlignCenter)
-            layout.addWidget(label)
-        
-        def init_orders_tab(self):
-            # 订单页（待实现）
-            layout = QVBoxLayout(self.orders_tab)
-            label = QLabel("订单功能待实现")
-            label.setStyleSheet("font-size: 24px;")
-            label.setAlignment(Qt.AlignCenter)
-            layout.addWidget(label)
-        
-        def init_profile_tab(self):
-            # 个人信息页（待实现）
-            layout = QVBoxLayout(self.profile_tab)
-            label = QLabel("个人信息功能待实现")
-            label.setStyleSheet("font-size: 24px;")
-            label.setAlignment(Qt.AlignCenter)
-            layout.addWidget(label)
-        
+            self.load_products()  # 调用加载商品方法
+
+        # 将load_products方法移到类级别
         def load_products(self):
             try:
                 # 清空现有商品列表
@@ -205,18 +187,14 @@ class LoginWindow(QMainWindow):
             
             layout = QHBoxLayout(item_frame)
             
-            # 商品图片（修改为加载本地路径图片）
+            # 商品图片
             if product['main_image']:
                 image_label = QLabel()
                 try:
-                    # 假设图片存储在 static/images 目录下
-                    image_path = f"{product['main_image']}"
-                    pixmap = QPixmap(image_path)
+                    pixmap = QPixmap(product['main_image'])
                     if not pixmap.isNull():
                         image_label.setPixmap(pixmap.scaled(200, 200, Qt.KeepAspectRatio))
                         layout.addWidget(image_label)
-                    else:
-                        print(f"无法加载图片：{image_path}")
                 except Exception as e:
                     print(f"图片加载错误：{str(e)}")
             
@@ -224,96 +202,543 @@ class LoginWindow(QMainWindow):
             info_layout = QVBoxLayout()
             
             name_label = QLabel(product['name'])
-            name_label.setStyleSheet("font-size: 34px; font-weight: bold;")
+            name_label.setStyleSheet("font-size: 18px; font-weight: bold;")
             info_layout.addWidget(name_label)
             
-            # 添加商品描述
             desc_label = QLabel(product['description'])
             desc_label.setWordWrap(True)
-            desc_label.setStyleSheet("font-size: 18px; color: #555;")
             info_layout.addWidget(desc_label)
             
             layout.addLayout(info_layout)
-            layout.addStretch()
             
             # 查看详情按钮
-            detail_btn = QPushButton("查看商品详细信息")
-            detail_btn.setStyleSheet("background-color: #2196F3; color: white;")
+            detail_btn = QPushButton("查看详情")
             detail_btn.clicked.connect(lambda: self.show_product_details(product))
-            
-            # 将按钮添加到布局
-            button_layout = QVBoxLayout()
-            button_layout.addWidget(detail_btn)
-            button_layout.addStretch()
-            layout.addLayout(button_layout)
+            layout.addWidget(detail_btn)
             
             self.scroll_layout.addWidget(item_frame)
+        
         def show_product_details(self, product):
+            # 保存当前商品信息
+            self.current_product = product
+            # 商品详情对话框
+            dialog = QDialog(self)
+            dialog.setWindowTitle(product['name'])
+            dialog.setFixedSize(600, 500)
+            
+            layout = QVBoxLayout(dialog)
+            
+            # 商品图片
+            if product['main_image']:
+                image_label = QLabel()
+                try:
+                    pixmap = QPixmap(product['main_image'])
+                    if not pixmap.isNull():
+                        image_label.setPixmap(pixmap.scaled(400, 400, Qt.KeepAspectRatio))
+                        image_label.setAlignment(Qt.AlignCenter)
+                        layout.addWidget(image_label)
+                except Exception as e:
+                    print(f"图片加载错误：{str(e)}")
+            
+            # 商品信息
+            name_label = QLabel(product['name'])
+            name_label.setStyleSheet("font-size: 24px; font-weight: bold;")
+            name_label.setAlignment(Qt.AlignCenter)
+            layout.addWidget(name_label)
+            
+            desc_label = QLabel(product['description'])
+            desc_label.setWordWrap(True)
+            layout.addWidget(desc_label)
+            
+            # 添加规格选择控件
             try:
                 connection = pymysql.connect(**self.db_config)
                 with connection.cursor() as cursor:
-                    # 查询商品规格类型
+                    # 查询商品的所有规格类型
                     cursor.execute("""
-                        SELECT st.spec_type_id, st.name, 
-                               GROUP_CONCAT(sv.spec_value_id, ':', sv.value SEPARATOR '|') AS spec_values
+                        SELECT DISTINCT st.spec_type_id, st.name
                         FROM spec_types st
                         JOIN spec_values sv ON st.spec_type_id = sv.spec_type_id
                         JOIN sku_specs ss ON sv.spec_value_id = ss.spec_value_id
                         JOIN skus s ON ss.sku_id = s.sku_id
                         WHERE s.product_id = %s
-                        GROUP BY st.spec_type_id
+                        ORDER BY st.spec_type_id
                     """, (product['product_id'],))
                     spec_types = cursor.fetchall()
                     
-                    # 创建详情窗口
-                    detail_window = QDialog(self)
-                    detail_window.setWindowTitle(f"{product['name']} - 商品详情")
-                    detail_window.setFixedSize(500, 400)
+                    if not spec_types:
+                        QMessageBox.information(self, "提示", "该商品暂无规格信息")
+                        return
                     
-                    layout = QVBoxLayout()
-                    
-                    # 显示商品基本信息
-                    name_label = QLabel(f"商品名称: {product['name']}")
-                    name_label.setStyleSheet("font-size: 18px; font-weight: bold;")
-                    layout.addWidget(name_label)
-                    
-                    desc_label = QLabel(f"商品描述: {product['description']}")
-                    desc_label.setWordWrap(True)
-                    layout.addWidget(desc_label)
-                    
-                    # 添加规格选择区域
                     self.spec_combos = {}
-                    for spec in spec_types:
-                        spec_label = QLabel(f"{spec['name']}:")
-                        spec_combo = QComboBox()
+                    for spec_type in spec_types:
+                        # 查询该规格类型下所有可用的规格值
+                        cursor.execute("""
+                            SELECT DISTINCT sv.spec_value_id, sv.value
+                            FROM spec_values sv
+                            JOIN sku_specs ss ON sv.spec_value_id = ss.spec_value_id
+                            JOIN skus s ON ss.sku_id = s.sku_id
+                            WHERE s.product_id = %s AND sv.spec_type_id = %s
+                            ORDER BY sv.spec_value_id
+                        """, (product['product_id'], spec_type['spec_type_id']))
+                        spec_values = cursor.fetchall()
                         
-                        # 添加规格选项
-                        for value_pair in spec['spec_values'].split('|'):
-                            value_id, value = value_pair.split(':')
-                            spec_combo.addItem(value, value_id)
+                        if not spec_values:
+                            continue
+                            
+                        # 创建下拉框
+                        hbox = QHBoxLayout()
+                        label = QLabel(spec_type['name'] + ":")
+                        combo = QComboBox()
+                        for value in spec_values:
+                            combo.addItem(value['value'], value['spec_value_id'])
                         
-                        spec_layout = QHBoxLayout()
-                        spec_layout.addWidget(spec_label)
-                        spec_layout.addWidget(spec_combo)
-                        layout.addLayout(spec_layout)
+                        hbox.addWidget(label)
+                        hbox.addWidget(combo)
+                        layout.addLayout(hbox)
+                        self.spec_combos[spec_type['spec_type_id']] = combo
                         
-                        self.spec_combos[spec['spec_type_id']] = spec_combo
+                        # 添加选择变化事件
+                        combo.currentIndexChanged.connect(self.update_sku_info)
                     
-                    # 添加确定按钮
-                    confirm_btn = QPushButton("确定选择")
-                    confirm_btn.clicked.connect(lambda: self.add_to_cart(product))
-                    layout.addWidget(confirm_btn)
-                    
-                    detail_window.setLayout(layout)
-                    detail_window.exec_()
+                    # 添加SKU信息显示区域
+                    self.sku_info_label = QLabel("请选择完整规格")
+                    self.sku_info_label.setStyleSheet("font-size: 16px; color: #FF9800;")
+                    layout.addWidget(self.sku_info_label)
                     
             except Error as e:
-                QMessageBox.critical(self, "错误", f"加载商品详情失败: {str(e)}")
+                QMessageBox.critical(self, "错误", f"加载规格信息失败：{str(e)}")
+            finally:
+                if 'connection' in locals() and connection.open:
+                    connection.close()
+            
+            # 添加到购物车按钮
+            add_to_cart_btn = QPushButton("添加到购物车")
+            add_to_cart_btn.clicked.connect(lambda: self.add_to_cart(product))
+            layout.addWidget(add_to_cart_btn)
+            
+            dialog.exec_()
+        
+        def init_cart_tab(self):
+            # 购物车页实现
+            layout = QVBoxLayout(self.cart_tab)
+            
+            self.cart_title_label = QLabel("我的购物车")
+            self.cart_title_label.setStyleSheet("font-size: 24px; font-weight: bold;")
+            self.cart_title_label.setAlignment(Qt.AlignCenter)
+            layout.addWidget(self.cart_title_label)
+            
+            # 购物车商品列表
+            self.cart_scroll_area = QScrollArea()
+            self.cart_scroll_content = QWidget()
+            self.cart_scroll_layout = QVBoxLayout(self.cart_scroll_content)
+            
+            self.cart_scroll_area.setWidgetResizable(True)
+            self.cart_scroll_area.setWidget(self.cart_scroll_content)
+            layout.addWidget(self.cart_scroll_area)
+            
+            # 结算按钮
+            self.checkout_button = QPushButton("结算")
+            self.checkout_button.setStyleSheet("background-color: #FF5722; color: white; font-size: 18px;")
+            self.checkout_button.clicked.connect(self.handle_checkout)
+            layout.addWidget(self.checkout_button)
+            
+            self.load_cart_items()
+        
+        def init_orders_tab(self):
+            # 订单页实现
+            layout = QVBoxLayout(self.orders_tab)
+            
+            self.orders_title_label = QLabel("我的订单")
+            self.orders_title_label.setStyleSheet("font-size: 24px; font-weight: bold;")
+            self.orders_title_label.setAlignment(Qt.AlignCenter)
+            layout.addWidget(self.orders_title_label)
+            
+            # 订单列表
+            self.orders_scroll_area = QScrollArea()
+            self.orders_scroll_content = QWidget()
+            self.orders_scroll_layout = QVBoxLayout(self.orders_scroll_content)
+            
+            self.orders_scroll_area.setWidgetResizable(True)
+            self.orders_scroll_area.setWidget(self.orders_scroll_content)
+            layout.addWidget(self.orders_scroll_area)
+            
+            self.load_orders()
+        
+        def init_profile_tab(self):
+            # 个人信息页实现
+            layout = QVBoxLayout(self.profile_tab)
+            
+            self.profile_title_label = QLabel("个人信息")
+            self.profile_title_label.setStyleSheet("font-size: 24px; font-weight: bold;")
+            self.profile_title_label.setAlignment(Qt.AlignCenter)
+            layout.addWidget(self.profile_title_label)
+            
+            # 个人信息表单
+            form_layout = QFormLayout()
+            
+            # 用户名
+            self.username_label = QLabel(self.username)
+            form_layout.addRow("用户名:", self.username_label)
+            
+            # 其他信息（可根据需要从数据库查询）
+            try:
+                connection = pymysql.connect(**self.db_config)
+                with connection.cursor() as cursor:
+                    cursor.execute("SELECT * FROM customers WHERE username = %s", (self.username,))
+                    customer = cursor.fetchone()
+                    
+                    if customer:
+                        # 显示用户信息
+                        self.name_label = QLabel(customer.get('name', '未设置'))
+                        self.phone_label = QLabel(customer.get('phone', '未设置'))
+                        self.address_label = QLabel(customer.get('address', '未设置'))
+                        
+                        form_layout.addRow("姓名:", self.name_label)
+                        form_layout.addRow("电话:", self.phone_label)
+                        form_layout.addRow("地址:", self.address_label)
+            except Error as e:
+                QMessageBox.critical(self, "错误", f"加载个人信息失败：{str(e)}")
+            finally:
+                if 'connection' in locals() and connection.open:
+                    connection.close()
+            
+            layout.addLayout(form_layout)
+            layout.addStretch()
+        def load_cart_items(self):
+            try:
+                # 清空现有购物车列表
+                for i in reversed(range(self.cart_scroll_layout.count())): 
+                    self.cart_scroll_layout.itemAt(i).widget().setParent(None)
+                
+                connection = pymysql.connect(**self.db_config)
+                with connection.cursor() as cursor:
+                    # 获取用户ID
+                    cursor.execute("SELECT customer_id FROM customers WHERE username = %s", (self.username,))
+                    customer = cursor.fetchone()
+                    
+                    if customer:
+                        # 查询购物车及商品信息
+                        cursor.execute("""
+                            SELECT ci.cart_item_id, ci.quantity, 
+                                   s.sku_id, s.price, s.stock,
+                                   p.name, p.description, p.main_image
+                            FROM cart_items ci
+                            JOIN carts c ON ci.cart_id = c.cart_id
+                            JOIN skus s ON ci.sku_id = s.sku_id
+                            JOIN products p ON s.product_id = p.product_id
+                            WHERE c.customer_id = %s
+                        """, (customer['customer_id'],))
+                        cart_items = cursor.fetchall()
+                        
+                        for item in cart_items:
+                            self.add_cart_item(item)
+            except Error as e:
+                QMessageBox.critical(self, "错误", f"加载购物车失败：{str(e)}")
+            finally:
+                if 'connection' in locals() and connection.open:
+                    connection.close()
+        
+        def add_cart_item(self, item):
+            item_frame = QFrame()
+            item_frame.setFrameShape(QFrame.StyledPanel)
+            item_frame.setStyleSheet("margin: 10px; padding: 10px;")
+            
+            layout = QHBoxLayout(item_frame)
+            
+            # 商品图片
+            if item['main_image']:
+                image_label = QLabel()
+                try:
+                    pixmap = QPixmap(item['main_image'])
+                    if not pixmap.isNull():
+                        image_label.setPixmap(pixmap.scaled(150, 150, Qt.KeepAspectRatio))
+                        layout.addWidget(image_label)
+                except Exception as e:
+                    print(f"图片加载错误：{str(e)}")
+            
+            # 商品信息
+            info_layout = QVBoxLayout()
+            
+            name_label = QLabel(item['name'])
+            name_label.setStyleSheet("font-size: 18px; font-weight: bold;")
+            info_layout.addWidget(name_label)
+            
+            # 添加SKU规格信息
+            try:
+                connection = pymysql.connect(**self.db_config)
+                with connection.cursor() as cursor:
+                    cursor.execute("""
+                        SELECT sv.value, st.name
+                        FROM sku_specs ss
+                        JOIN spec_values sv ON ss.spec_value_id = sv.spec_value_id
+                        JOIN spec_types st ON sv.spec_type_id = st.spec_type_id
+                        WHERE ss.sku_id = %s
+                        ORDER BY st.spec_type_id
+                    """, (item['sku_id'],))
+                    specs = cursor.fetchall()
+                    
+                    if specs:
+                        spec_text = " | ".join([f"{spec['name']}:{spec['value']}" for spec in specs])
+                        spec_label = QLabel(spec_text)
+                        spec_label.setWordWrap(True)  # 添加自动换行
+                        info_layout.addWidget(spec_label)
+            except Error as e:
+                print(f"加载规格信息失败: {str(e)}")
+            finally:
+                if 'connection' in locals() and connection.open:
+                    connection.close()
+            
+            price_label = QLabel(f"价格: ¥{item['price']}")
+            info_layout.addWidget(price_label)
+            
+            quantity_layout = QHBoxLayout()
+            quantity_label = QLabel("数量:")
+            quantity_spin = QSpinBox()
+            quantity_spin.setRange(1, item['stock'])
+            quantity_spin.setValue(item['quantity'])
+            quantity_spin.valueChanged.connect(lambda value, item_id=item['cart_item_id']: self.update_cart_item_quantity(item_id, value))
+            
+            quantity_layout.addWidget(quantity_label)
+            quantity_layout.addWidget(quantity_spin)
+            info_layout.addLayout(quantity_layout)
+            
+            layout.addLayout(info_layout)
+            
+            # 删除按钮
+            delete_btn = QPushButton("删除")
+            delete_btn.setStyleSheet("background-color: #F44336; color: white;")
+            delete_btn.clicked.connect(lambda _, item_id=item['cart_item_id']: self.remove_cart_item(item_id))
+            layout.addWidget(delete_btn)
+            
+            self.cart_scroll_layout.addWidget(item_frame)
+        
+        def load_orders(self):
+            try:
+                # 清空现有订单列表
+                for i in reversed(range(self.orders_scroll_layout.count())): 
+                    self.orders_scroll_layout.itemAt(i).widget().setParent(None)
+                
+                connection = pymysql.connect(**self.db_config)
+                with connection.cursor() as cursor:
+                    # 获取用户ID
+                    cursor.execute("SELECT customer_id FROM customers WHERE username = %s", (self.username,))
+                    customer = cursor.fetchone()
+                    
+                    if customer:
+                        # 查询订单及商品信息
+                        cursor.execute("""
+                            SELECT o.order_id, o.status, o.created_at, 
+                                   o.shipped_at, o.delivered_at, o.tracking_number,
+                                   oi.order_item_id, oi.quantity, oi.price_at_order,
+                                   p.name, p.main_image
+                            FROM orders o
+                            JOIN order_items oi ON o.order_id = oi.order_id
+                            JOIN skus s ON oi.sku_id = s.sku_id
+                            JOIN products p ON s.product_id = p.product_id
+                            WHERE o.customer_id = %s
+                            ORDER BY o.created_at DESC
+                        """, (customer['customer_id'],))
+                        orders = cursor.fetchall()
+                        
+                        # 按订单ID分组
+                        orders_dict = {}
+                        for item in orders:
+                            if item['order_id'] not in orders_dict:
+                                orders_dict[item['order_id']] = {
+                                    'order_info': item,
+                                    'items': []
+                                }
+                            orders_dict[item['order_id']]['items'].append(item)
+                        
+                        for order_id, order_data in orders_dict.items():
+                            self.add_order_item(order_data['order_info'], order_data['items'])
+            except Error as e:
+                QMessageBox.critical(self, "错误", f"加载订单失败：{str(e)}")
+            finally:
+                if 'connection' in locals() and connection.open:
+                    connection.close()
+        
+        def add_order_item(self, order_info, items):
+            order_frame = QFrame()
+            order_frame.setFrameShape(QFrame.StyledPanel)
+            order_frame.setStyleSheet("margin: 10px; padding: 10px;")
+            
+            layout = QVBoxLayout(order_frame)
+            
+            # 订单基本信息
+            order_header = QLabel(f"订单号: {order_info['order_id']} | 状态: {order_info['status']} | 下单时间: {order_info['created_at']}")
+            order_header.setStyleSheet("font-size: 16px; font-weight: bold;")
+            layout.addWidget(order_header)
+            
+            # 订单商品列表
+            for item in items:
+                item_layout = QHBoxLayout()
+                
+                # 商品图片
+                if item['main_image']:
+                    image_label = QLabel()
+                    try:
+                        pixmap = QPixmap(item['main_image'])
+                        if not pixmap.isNull():
+                            image_label.setPixmap(pixmap.scaled(100, 100, Qt.KeepAspectRatio))
+                            item_layout.addWidget(image_label)
+                    except Exception as e:
+                        print(f"图片加载错误：{str(e)}")
+                
+                # 商品信息
+                info_layout = QVBoxLayout()
+                name_label = QLabel(item['name'])
+                info_layout.addWidget(name_label)
+                
+                price_label = QLabel(f"价格: ¥{item['price_at_order']} x {item['quantity']}")
+                info_layout.addWidget(price_label)
+                
+                item_layout.addLayout(info_layout)
+                layout.addLayout(item_layout)
+            
+            # 订单总价
+            total_price = sum(item['price_at_order'] * item['quantity'] for item in items)
+            total_label = QLabel(f"订单总价: ¥{total_price:.2f}")
+            total_label.setStyleSheet("font-size: 16px; font-weight: bold;")
+            layout.addWidget(total_label)
+            
+            # 物流信息
+            if order_info['tracking_number']:
+                tracking_label = QLabel(f"物流单号: {order_info['tracking_number']}")
+                layout.addWidget(tracking_label)
+            
+            self.orders_scroll_layout.addWidget(order_frame)
+        
+        def update_cart_item_quantity(self, cart_item_id, quantity):
+            try:
+                connection = pymysql.connect(**self.db_config)
+                with connection.cursor() as cursor:
+                    cursor.execute("""
+                        UPDATE cart_items 
+                        SET quantity = %s 
+                        WHERE cart_item_id = %s
+                    """, (quantity, cart_item_id))
+                    connection.commit()
+            except Error as e:
+                QMessageBox.critical(self, "错误", f"更新数量失败：{str(e)}")
+            finally:
+                if 'connection' in locals() and connection.open:
+                    connection.close()
+        
+        def remove_cart_item(self, cart_item_id):
+            try:
+                connection = pymysql.connect(**self.db_config)
+                with connection.cursor() as cursor:
+                    cursor.execute("DELETE FROM cart_items WHERE cart_item_id = %s", (cart_item_id,))
+                    connection.commit()
+                    self.load_cart_items()  # 刷新购物车
+            except Error as e:
+                QMessageBox.critical(self, "错误", f"删除商品失败：{str(e)}")
+            finally:
+                if 'connection' in locals() and connection.open:
+                    connection.close()
+        
+        def handle_checkout(self):
+            try:
+                connection = pymysql.connect(**self.db_config)
+                with connection.cursor() as cursor:
+                    # 获取用户ID
+                    cursor.execute("SELECT customer_id FROM customers WHERE username = %s", (self.username,))
+                    customer = cursor.fetchone()
+                    
+                    if customer:
+                        # 获取购物车商品
+                        cursor.execute("""
+                            SELECT ci.sku_id, ci.quantity, s.price
+                            FROM cart_items ci
+                            JOIN carts c ON ci.cart_id = c.cart_id
+                            JOIN skus s ON ci.sku_id = s.sku_id
+                            WHERE c.customer_id = %s
+                        """, (customer['customer_id'],))
+                        cart_items = cursor.fetchall()
+                        
+                        if cart_items:
+                            # 创建订单
+                            cursor.execute("""
+                                INSERT INTO orders (customer_id, status)
+                                VALUES (%s, 'paid')
+                            """, (customer['customer_id'],))
+                            order_id = cursor.lastrowid
+                            
+                            # 添加订单商品
+                            for item in cart_items:
+                                cursor.execute("""
+                                    INSERT INTO order_items (order_id, sku_id, quantity, price_at_order)
+                                    VALUES (%s, %s, %s, %s)
+                                """, (order_id, item['sku_id'], item['quantity'], item['price']))
+                            
+                            # 清空购物车
+                            cursor.execute("""
+                                DELETE ci FROM cart_items ci
+                                JOIN carts c ON ci.cart_id = c.cart_id
+                                WHERE c.customer_id = %s
+                            """, (customer['customer_id'],))
+                            
+                            connection.commit()
+                            QMessageBox.information(self, "成功", "订单创建成功！")
+                            self.load_cart_items()  # 刷新购物车
+                            self.load_orders()     # 刷新订单
+                        else:
+                            QMessageBox.warning(self, "警告", "购物车为空！")
+            except Error as e:
+                connection.rollback()
+                QMessageBox.critical(self, "错误", f"结算失败：{str(e)}")
             finally:
                 if 'connection' in locals() and connection.open:
                     connection.close()
 
-
+        def update_sku_info(self):
+            try:
+                # 获取当前选择的规格
+                selected_specs = {}
+                for spec_type_id, combo in self.spec_combos.items():
+                    if combo.currentIndex() >= 0:
+                        selected_specs[spec_type_id] = combo.currentData()
+                
+                if len(selected_specs) < len(self.spec_combos):
+                    self.sku_info_label.setText("请选择完整规格")
+                    self.sku_info_label.setStyleSheet("font-size: 16px; color: #FF9800;")
+                    return
+                
+                connection = pymysql.connect(**self.db_config)
+                with connection.cursor() as cursor:
+                    # 查询匹配的SKU
+                    cursor.execute("""
+                        SELECT s.sku_id, s.price, s.stock
+                        FROM skus s
+                        JOIN sku_specs ss ON s.sku_id = ss.sku_id
+                        JOIN spec_values sv ON ss.spec_value_id = sv.spec_value_id
+                        WHERE s.product_id = %s AND sv.spec_value_id IN (%s)
+                        GROUP BY s.sku_id
+                        HAVING COUNT(DISTINCT sv.spec_type_id) = %s
+                    """ % (self.current_product['product_id'], 
+                          ','.join(map(str, selected_specs.values())), 
+                          len(selected_specs)))
+                    
+                    sku = cursor.fetchone()
+                    if sku:
+                        stock_status = "有货" if sku['stock'] > 0 else "无货"
+                        self.sku_info_label.setText(
+                            f"当前选择: ¥{sku['price']} | 库存: {sku['stock']}件 | 状态: {stock_status}"
+                        )
+                        self.sku_info_label.setStyleSheet(
+                            "font-size: 16px; color: #4CAF50;" if sku['stock'] > 0 
+                            else "font-size: 16px; color: #F44336;"
+                        )
+                    else:
+                        self.sku_info_label.setText("该规格组合无货")
+                        self.sku_info_label.setStyleSheet("font-size: 16px; color: #F44336;")
+            except Error as e:
+                print(f"更新SKU信息失败: {str(e)}")
+            finally:
+                if 'connection' in locals() and connection.open:
+                    connection.close()
         def add_to_cart(self, product):
             try:
                 # 获取用户选择的规格
@@ -324,25 +749,65 @@ class LoginWindow(QMainWindow):
                 # 查询匹配的SKU
                 connection = pymysql.connect(**self.db_config)
                 with connection.cursor() as cursor:
-                    # 这里需要根据选择的规格值查询对应的SKU
-                    # 实际实现可能需要更复杂的SQL查询
+                    # 查询匹配的SKU
                     cursor.execute("""
                         SELECT s.sku_id, s.price, s.stock
                         FROM skus s
                         JOIN sku_specs ss ON s.sku_id = ss.sku_id
-                        WHERE s.product_id = %s AND ss.spec_value_id IN (%s)
+                        JOIN spec_values sv ON ss.spec_value_id = sv.spec_value_id
+                        WHERE s.product_id = %s AND sv.spec_value_id IN (%s)
                         GROUP BY s.sku_id
-                        HAVING COUNT(DISTINCT ss.spec_value_id) = %s
-                    """, (product['product_id'], ','.join(map(str, selected_specs.values())), len(selected_specs)))
+                        HAVING COUNT(DISTINCT sv.spec_value_id) = %s
+                    """ % (product['product_id'], ','.join(map(str, selected_specs.values())), len(selected_specs)))
                     
                     sku = cursor.fetchone()
                     
                     if sku:
-                        QMessageBox.information(self, "添加成功", 
-                            f"已添加 {product['name']} (SKU: {sku['sku_id']}) 到购物车")
+                        # 获取用户ID
+                        cursor.execute("SELECT customer_id FROM customers WHERE username = %s", (self.username,))
+                        customer = cursor.fetchone()
+                        
+                        if customer:
+                            # 检查用户是否有购物车
+                            cursor.execute("SELECT cart_id FROM carts WHERE customer_id = %s", (customer['customer_id'],))
+                            cart = cursor.fetchone()
+                            
+                            if not cart:
+                                # 创建购物车
+                                cursor.execute("INSERT INTO carts (customer_id) VALUES (%s)", (customer['customer_id'],))
+                                cart_id = cursor.lastrowid
+                            else:
+                                cart_id = cart['cart_id']
+                            
+                            # 检查购物车中是否已有该SKU
+                            cursor.execute("""
+                                SELECT cart_item_id, quantity 
+                                FROM cart_items 
+                                WHERE cart_id = %s AND sku_id = %s
+                            """, (cart_id, sku['sku_id']))
+                            existing_item = cursor.fetchone()
+                            
+                            if existing_item:
+                                # 更新数量
+                                new_quantity = existing_item['quantity'] + 1
+                                cursor.execute("""
+                                    UPDATE cart_items 
+                                    SET quantity = %s 
+                                    WHERE cart_item_id = %s
+                                """, (new_quantity, existing_item['cart_item_id']))
+                            else:
+                                # 添加新商品
+                                cursor.execute("""
+                                    INSERT INTO cart_items (cart_id, sku_id, quantity)
+                                    VALUES (%s, %s, 1)
+                                """, (cart_id, sku['sku_id']))
+                            
+                            connection.commit()
+                            QMessageBox.information(self, "添加成功", 
+                                f"已添加 {product['name']} (SKU: {sku['sku_id']}) 到购物车")
+                            self.load_cart_items()  # 刷新购物车
                     else:
                         QMessageBox.warning(self, "错误", "找不到匹配的SKU")
-                        
             except Error as e:
                 QMessageBox.critical(self, "错误", f"添加到购物车失败: {str(e)}")
             finally:
