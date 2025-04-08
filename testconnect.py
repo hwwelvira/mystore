@@ -982,7 +982,7 @@ class LoginWindow(QMainWindow):
             
             # 添加基本选项卡
             self.tab_bar.addTab(self.add_product_tab, "上架新商品")
-            self.tab_bar.addTab(self.remove_product_tab, "下架商品")
+            self.tab_bar.addTab(self.remove_product_tab, "修改商品库存")
             self.tab_bar.addTab(self.ship_orders_tab, "订单发货")
             
             # 店长专属选项卡
@@ -999,17 +999,25 @@ class LoginWindow(QMainWindow):
             self.main_layout.addWidget(self.tab_bar, stretch=1)
         
         def init_add_product_tab(self):
+            # 创建主滚动区域
             self.add_product_scroll = QScrollArea()
             self.add_product_scroll.setWidgetResizable(True)
+            self.add_product_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+            self.add_product_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+            
+            # 创建滚动内容容器
             self.add_product_scroll_content = QWidget()
             self.add_product_scroll.setWidget(self.add_product_scroll_content)
             
             # 主布局放在滚动区域内
             layout = QVBoxLayout(self.add_product_scroll_content)
+            layout.setContentsMargins(10, 10, 10, 10)
             layout.setSpacing(15)
-            # 商品基本信息
+            
+            # 商品基本信息表单
             form_layout = QFormLayout()
             form_layout.setSpacing(10)
+            
             # 商品名称
             self.product_name_input = QLineEdit()
             form_layout.addRow("商品名称:", self.product_name_input)
@@ -1031,49 +1039,21 @@ class LoginWindow(QMainWindow):
             
             # 规格管理区域
             self.spec_group = QGroupBox("规格管理")
-            self.spec_group.setStyleSheet("QGroupBox { padding: 10px; }")  # 增加内边距
+            self.spec_group.setStyleSheet("QGroupBox { padding: 10px; }")
             self.spec_layout = QVBoxLayout()
-            self.spec_layout.setSpacing(10)  # 增加间距
             
-            # 规格类型部分
-            spec_type_frame = QFrame()
-            spec_type_frame.setFrameShape(QFrame.StyledPanel)
-            spec_type_layout = QVBoxLayout(spec_type_frame)
-            spec_type_layout.setSpacing(8)
+            # 规格值表格
+            self.spec_table = QTableWidget()
+            self.spec_table.setColumnCount(2)
+            self.spec_table.setHorizontalHeaderLabels(["规格类型", "规格值"])
+            self.spec_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+            self.spec_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+            self.spec_layout.addWidget(self.spec_table)
             
-            # 添加规格类型按钮
-            self.add_spec_type_btn = QPushButton("添加规格类型")
-            self.add_spec_type_btn.setFixedHeight(40)  # 增加按钮高度
-            self.add_spec_type_btn.clicked.connect(self.add_spec_type)
-            spec_type_layout.addWidget(self.add_spec_type_btn)
-            
-            # 规格类型列表
-            self.spec_type_list = QListWidget()
-            self.spec_type_list.setFixedHeight(150)  # 固定高度
-            spec_type_layout.addWidget(self.spec_type_list)
-            
-            self.spec_layout.addWidget(spec_type_frame)
-            
-            # 规格值管理
-            self.spec_value_group = QGroupBox("规格值管理")
-            self.spec_value_group.setStyleSheet("QGroupBox { padding: 10px; }")
-            self.spec_value_layout = QVBoxLayout()
-            self.spec_value_layout.setSpacing(8)
-            
-            # 添加规格值按钮
-            self.add_spec_value_btn = QPushButton("添加规格值")
-            self.add_spec_value_btn.setFixedHeight(40)
-            self.add_spec_value_btn.clicked.connect(self.add_spec_value)
-            self.spec_value_layout.addWidget(self.add_spec_value_btn)
-            
-            # 规格值列表
-            self.spec_value_list = QListWidget()
-            self.spec_value_list.setFixedHeight(150)
-            self.spec_value_list.setSelectionMode(QAbstractItemView.MultiSelection)  # 允许多选
-            self.spec_value_layout.addWidget(self.spec_value_list)
-            
-            self.spec_value_group.setLayout(self.spec_value_layout)
-            self.spec_layout.addWidget(self.spec_value_group)
+            # 添加规格按钮
+            self.add_spec_btn = QPushButton("添加商品规格类型")
+            self.add_spec_btn.clicked.connect(self.show_add_spec_dialog)
+            self.spec_layout.addWidget(self.add_spec_btn)
             
             self.spec_group.setLayout(self.spec_layout)
             layout.addWidget(self.spec_group)
@@ -1082,21 +1062,19 @@ class LoginWindow(QMainWindow):
             self.sku_group = QGroupBox("SKU管理")
             self.sku_group.setStyleSheet("QGroupBox { padding: 10px; }")
             self.sku_layout = QVBoxLayout()
-            self.sku_layout.setSpacing(10)
             
             # SKU表格
             self.sku_table = QTableWidget()
             self.sku_table.setColumnCount(3)
             self.sku_table.setHorizontalHeaderLabels(["规格组合", "价格", "库存"])
-            self.sku_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)  # 第一列自动拉伸
-            self.sku_table.setColumnWidth(1, 100)  # 固定价格列宽度
-            self.sku_table.setColumnWidth(2, 100)  # 固定库存列宽度
-            self.sku_table.setFixedHeight(250)  # 固定高度
+            self.sku_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+            self.sku_table.setColumnWidth(1, 100)
+            self.sku_table.setColumnWidth(2, 100)
+            self.sku_table.setFixedHeight(250)
             self.sku_layout.addWidget(self.sku_table)
             
             # 添加SKU按钮
             self.add_sku_btn = QPushButton("添加SKU")
-            self.add_sku_btn.setFixedHeight(40)
             self.add_sku_btn.clicked.connect(self.add_sku)
             self.sku_layout.addWidget(self.add_sku_btn)
             
@@ -1109,10 +1087,12 @@ class LoginWindow(QMainWindow):
             layout.addWidget(self.add_product_btn)
             
             # 加载规格类型
-            self.load_spec_types()
-            # 将滚动区域设置为选项卡的内容
+            #self.load_spec_types()
+            
+            # 设置选项卡布局
             self.add_product_tab.setLayout(QVBoxLayout())
             self.add_product_tab.layout().addWidget(self.add_product_scroll)
+            self.add_product_tab.layout().setContentsMargins(0, 0, 0, 0)
         
         def browse_image(self):
             file_path, _ = QFileDialog.getOpenFileName(self, "选择商品图片", "", "图片文件 (*.png *.jpg *.jpeg)")
@@ -1120,76 +1100,113 @@ class LoginWindow(QMainWindow):
                 # 转换为相对路径
                 rel_path = file_path.replace(os.getcwd(), "").lstrip("\\/")
                 self.product_image_input.setText(rel_path)
-        
-        def load_spec_types(self):
+        def show_add_spec_dialog(self):
+            # 第一步：选择规格类型
             try:
                 connection = pymysql.connect(**self.db_config)
                 with connection.cursor() as cursor:
                     cursor.execute("SELECT * FROM spec_types")
                     spec_types = cursor.fetchall()
                     
-                    self.spec_type_list.clear()
+                    if not spec_types:
+                        QMessageBox.warning(self, "提示", "没有可用的规格类型")
+                        return
+                        
+                    # 创建选择规格类型的对话框
+                    dialog = QDialog(self)
+                    dialog.setWindowTitle("选择规格类型")
+                    layout = QVBoxLayout(dialog)
+                    
+                    # 规格类型列表
+                    spec_list = QListWidget()
                     for spec in spec_types:
                         item = QListWidgetItem(spec['name'])
                         item.setData(Qt.UserRole, spec['spec_type_id'])
-                        self.spec_type_list.addItem(item)
+                        spec_list.addItem(item)
+                    
+                    layout.addWidget(spec_list)
+                    
+                    # 确定按钮
+                    btn_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+                    btn_box.accepted.connect(dialog.accept)
+                    btn_box.rejected.connect(dialog.reject)
+                    layout.addWidget(btn_box)
+                    
+                    if dialog.exec_() == QDialog.Accepted:
+                        selected_item = spec_list.currentItem()
+                        if selected_item:
+                            spec_type_id = selected_item.data(Qt.UserRole)
+                            spec_type_name = selected_item.text()
+                            self.show_select_spec_value_dialog(spec_type_id, spec_type_name)
             except Error as e:
                 QMessageBox.critical(self, "错误", f"加载规格类型失败：{str(e)}")
             finally:
                 if 'connection' in locals() and connection.open:
                     connection.close()
-        
-        def add_spec_type(self):
-            name, ok = QInputDialog.getText(self, "添加规格类型", "请输入规格类型名称:")
-            if ok and name:
-                try:
-                    connection = pymysql.connect(**self.db_config)
-                    with connection.cursor() as cursor:
-                        cursor.execute("INSERT INTO spec_types (name) VALUES (%s)", (name,))
-                        connection.commit()
-                        self.load_spec_types()
-                except Error as e:
-                    QMessageBox.critical(self, "错误", f"添加规格类型失败：{str(e)}")
-                finally:
-                    if 'connection' in locals() and connection.open:
-                        connection.close()
-        
-        def add_spec_value(self):
-            current_item = self.spec_type_list.currentItem()
-            if not current_item:
-                QMessageBox.warning(self, "警告", "请先选择规格类型")
-                return
-                
-            spec_type_id = current_item.data(Qt.UserRole)
-            value, ok = QInputDialog.getText(self, "添加规格值", "请输入规格值:")
-            if ok and value:
-                try:
-                    connection = pymysql.connect(**self.db_config)
-                    with connection.cursor() as cursor:
-                        cursor.execute(
-                            "INSERT INTO spec_values (spec_type_id, value) VALUES (%s, %s)",
-                            (spec_type_id, value)
-                        )
-                        connection.commit()
+
+        def show_select_spec_value_dialog(self, spec_type_id, spec_type_name):
+            # 第二步：选择或添加规格值
+            try:
+                connection = pymysql.connect(**self.db_config)
+                with connection.cursor() as cursor:
+                    # 获取该规格类型的所有规格值
+                    cursor.execute("""
+                        SELECT * FROM spec_values 
+                        WHERE spec_type_id = %s
+                    """, (spec_type_id,))
+                    spec_values = cursor.fetchall()
+                    
+                    dialog = QDialog(self)
+                    dialog.setWindowTitle(f"选择{spec_type_name}规格值")
+                    layout = QVBoxLayout(dialog)
+                    
+                    # 现有规格值列表
+                    value_list = QListWidget()
+                    for value in spec_values:
+                        item = QListWidgetItem(value['value'])
+                        item.setData(Qt.UserRole, value['spec_value_id'])
+                        value_list.addItem(item)
+                    
+                    layout.addWidget(QLabel(f"现有{spec_type_name}规格值:"))
+                    layout.addWidget(value_list)
+                    
+                    # 添加新规格值区域
+                    layout.addWidget(QLabel("或添加新规格值:"))
+                    new_value_input = QLineEdit()
+                    layout.addWidget(new_value_input)
+                    
+                    btn_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+                    btn_box.accepted.connect(dialog.accept)
+                    btn_box.rejected.connect(dialog.reject)
+                    layout.addWidget(btn_box)
+                    
+                    if dialog.exec_() == QDialog.Accepted:
+                        selected_value = None
+                        if value_list.currentItem():
+                            # 选择了现有规格值
+                            selected_value = value_list.currentItem().text()
+                        elif new_value_input.text().strip():
+                            # 添加了新规格值
+                            new_value = new_value_input.text().strip()
+                            cursor.execute("""
+                                INSERT INTO spec_values (spec_type_id, value)
+                                VALUES (%s, %s)
+                            """, (spec_type_id, new_value))
+                            connection.commit()
+                            selected_value = new_value
                         
-                        # 重新加载规格值
-                        cursor.execute(
-                            "SELECT * FROM spec_values WHERE spec_type_id = %s",
-                            (spec_type_id,)
-                        )
-                        spec_values = cursor.fetchall()
-                        
-                        self.spec_value_list.clear()
-                        for value in spec_values:
-                            item = QListWidgetItem(value['value'])
-                            item.setData(Qt.UserRole, value['spec_value_id'])
-                            self.spec_value_list.addItem(item)
-                except Error as e:
-                    QMessageBox.critical(self, "错误", f"添加规格值失败：{str(e)}")
-                finally:
-                    if 'connection' in locals() and connection.open:
-                        connection.close()
-        
+                        if selected_value:
+                            # 添加到主界面表格
+                            row = self.spec_table.rowCount()
+                            self.spec_table.insertRow(row)
+                            self.spec_table.setItem(row, 0, QTableWidgetItem(spec_type_name))
+                            self.spec_table.setItem(row, 1, QTableWidgetItem(selected_value))
+            except Error as e:
+                QMessageBox.critical(self, "错误", f"操作规格值失败：{str(e)}")
+            finally:
+                if 'connection' in locals() and connection.open:
+                    connection.close()
+
         def add_sku(self):
             # 获取选中的规格值
             selected_values = []
@@ -1210,18 +1227,18 @@ class LoginWindow(QMainWindow):
                 self.sku_table.insertRow(row)
                 
                 # 规格组合显示
-                spec_text = ", ".join([item.text() for item in selected_values])
+                spec_text = " | ".join([item.text() for item in selected_values])
                 self.sku_table.setItem(row, 0, QTableWidgetItem(spec_text))
                 
                 # 价格
-                self.sku_table.setItem(row, 1, QTableWidgetItem(str(price)))
+                self.sku_table.setItem(row, 1, QTableWidgetItem(f"¥{price:.2f}"))
                 
                 # 库存
-                self.sku_table.setItem(row, 2, QTableWidgetItem(str(stock)))
+                self.sku_table.setItem(row, 2, QTableWidgetItem(f"{stock}件"))
                 
                 # 保存规格值ID
-                for item in selected_values:
-                    self.sku_table.item(row, 0).setData(Qt.UserRole, item.data(Qt.UserRole))
+                spec_value_ids = [item.data(Qt.UserRole) for item in selected_values]
+                self.sku_table.item(row, 0).setData(Qt.UserRole, spec_value_ids)
         
         def add_product(self):
             # 验证基本信息
@@ -1285,24 +1302,159 @@ class LoginWindow(QMainWindow):
         def init_remove_product_tab(self):
             layout = QVBoxLayout(self.remove_product_tab)
             
+            # 搜索框
+            search_layout = QHBoxLayout()
+            self.search_input = QLineEdit()
+            self.search_input.setPlaceholderText("输入商品名称搜索...")
+            search_btn = QPushButton("搜索")
+            search_btn.clicked.connect(self.search_products)
+            search_layout.addWidget(self.search_input)
+            search_layout.addWidget(search_btn)
+            layout.addLayout(search_layout)
+            
             # 商品列表
             self.product_list = QListWidget()
+            self.product_list.itemClicked.connect(self.load_product_skus)
             layout.addWidget(self.product_list)
             
-            # 下架按钮
-            self.remove_product_btn = QPushButton("下架选中商品")
-            self.remove_product_btn.clicked.connect(self.remove_product)
-            layout.addWidget(self.remove_product_btn)
+            # SKU表格
+            self.sku_table = QTableWidget()
+            self.sku_table.setColumnCount(4)
+            self.sku_table.setHorizontalHeaderLabels(["规格组合", "价格", "库存", "操作"])
+            self.sku_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+            layout.addWidget(self.sku_table)
             
-            self.load_products()
-        
-        def load_products(self):
-            # 加载商品列表
-            pass
-        
-        def remove_product(self):
-            # 实现下架商品逻辑
-            pass
+            # 下架按钮
+            self.delete_product_btn = QPushButton("下架该商品")
+            self.delete_product_btn.clicked.connect(self.delete_product)
+            layout.addWidget(self.delete_product_btn)
+            
+            self.current_product_id = None
+
+        def search_products(self):
+            keyword = self.search_input.text().strip()
+            try:
+                connection = pymysql.connect(**self.db_config)
+                with connection.cursor() as cursor:
+                    query = "SELECT * FROM products WHERE name LIKE %s AND is_delete = 0"
+                    cursor.execute(query, (f"%{keyword}%",))
+                    products = cursor.fetchall()
+                    
+                    self.product_list.clear()
+                    for product in products:
+                        item = QListWidgetItem(product['name'])
+                        item.setData(Qt.UserRole, product['product_id'])
+                        self.product_list.addItem(item)
+            except Error as e:
+                QMessageBox.critical(self, "错误", f"搜索商品失败：{str(e)}")
+            finally:
+                if 'connection' in locals() and connection.open:
+                    connection.close()
+
+        def load_product_skus(self, item):
+            self.current_product_id = item.data(Qt.UserRole)
+            try:
+                connection = pymysql.connect(**self.db_config)
+                with connection.cursor() as cursor:
+                    # 查询商品的所有SKU
+                    cursor.execute("""
+                        SELECT s.sku_id, s.price, s.stock, 
+                               GROUP_CONCAT(sv.value ORDER BY st.spec_type_id SEPARATOR ', ') as specs
+                        FROM skus s
+                        LEFT JOIN sku_specs ss ON s.sku_id = ss.sku_id
+                        LEFT JOIN spec_values sv ON ss.spec_value_id = sv.spec_value_id
+                        LEFT JOIN spec_types st ON sv.spec_type_id = st.spec_type_id
+                        WHERE s.product_id = %s
+                        GROUP BY s.sku_id
+                    """, (self.current_product_id,))
+                    skus = cursor.fetchall()
+                    
+                    self.sku_table.setRowCount(0)
+                    for row, sku in enumerate(skus):
+                        self.sku_table.insertRow(row)
+                        
+                        # 规格组合
+                        self.sku_table.setItem(row, 0, QTableWidgetItem(sku['specs']))
+                        
+                        # 价格(可编辑)
+                        price_item = QTableWidgetItem(str(sku['price']))
+                        price_item.setFlags(price_item.flags() | Qt.ItemIsEditable)
+                        self.sku_table.setItem(row, 1, price_item)
+                        
+                        # 库存(可编辑)
+                        stock_item = QTableWidgetItem(str(sku['stock']))
+                        stock_item.setFlags(stock_item.flags() | Qt.ItemIsEditable)
+                        self.sku_table.setItem(row, 2, stock_item)
+                        
+                        # 保存按钮
+                        save_btn = QPushButton("保存")
+                        save_btn.clicked.connect(lambda _, r=row: self.save_sku_changes(r))
+                        self.sku_table.setCellWidget(row, 3, save_btn)
+                        
+                        # 保存SKU ID
+                        self.sku_table.item(row, 0).setData(Qt.UserRole, sku['sku_id'])
+            except Error as e:
+                QMessageBox.critical(self, "错误", f"加载SKU失败：{str(e)}")
+            finally:
+                if 'connection' in locals() and connection.open:
+                    connection.close()
+
+        def save_sku_changes(self, row):
+            try:
+                sku_id = self.sku_table.item(row, 0).data(Qt.UserRole)
+                new_price = float(self.sku_table.item(row, 1).text())
+                new_stock = int(self.sku_table.item(row, 2).text())
+                
+                connection = pymysql.connect(**self.db_config)
+                with connection.cursor() as cursor:
+                    cursor.execute("""
+                        UPDATE skus 
+                        SET price = %s, stock = %s 
+                        WHERE sku_id = %s
+                    """, (new_price, new_stock, sku_id))
+                    connection.commit()
+                    QMessageBox.information(self, "成功", "修改已保存")
+            except ValueError:
+                QMessageBox.warning(self, "警告", "请输入有效的数字")
+            except Error as e:
+                QMessageBox.critical(self, "错误", f"保存失败：{str(e)}")
+            finally:
+                if 'connection' in locals() and connection.open:
+                    connection.close()
+
+        def delete_product(self):
+            if not self.current_product_id:
+                QMessageBox.warning(self, "警告", "请先选择商品")
+                return
+                
+            reply = QMessageBox.question(
+                self, '确认', 
+                '确定要下架该商品吗？下架后商品将不再显示',
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+            )
+            
+            if reply == QMessageBox.Yes:
+                try:
+                    connection = pymysql.connect(**self.db_config)
+                    with connection.cursor() as cursor:
+                        cursor.execute("""
+                            UPDATE products 
+                            SET is_delete = 1 
+                            WHERE product_id = %s
+                        """, (self.current_product_id,))
+                        connection.commit()
+                        
+                        # 清空当前选择
+                        self.current_product_id = None
+                        self.product_list.clear()
+                        self.sku_table.setRowCount(0)
+                        
+                        QMessageBox.information(self, "成功", "商品已下架")
+                except Error as e:
+                    QMessageBox.critical(self, "错误", f"下架失败：{str(e)}")
+                finally:
+                    if 'connection' in locals() and connection.open:
+                        connection.close()
         
         def init_ship_orders_tab(self):
             layout = QVBoxLayout(self.ship_orders_tab)
