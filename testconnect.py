@@ -374,14 +374,44 @@ class LoginWindow(QMainWindow):
             self.profile_title_label.setAlignment(Qt.AlignCenter)
             layout.addWidget(self.profile_title_label)
             
-            # 个人信息表单
-            form_layout = QFormLayout()
+            # 个人信息显示表单
+            self.profile_form = QFormLayout()
             
-            # 用户名
-            self.username_label = QLabel(self.username)
-            form_layout.addRow("用户名:", self.username_label)
+            # 用户名显示和修改按钮
+            self.username_label = QLabel()
+            self.username_edit_btn = QPushButton("修改用户名")
+            self.username_edit_btn.setStyleSheet("background-color: #2196F3; color: white;")
+            self.username_edit_btn.clicked.connect(self.edit_username)
             
-            # 其他信息（可根据需要从数据库查询）
+            username_layout = QHBoxLayout()
+            username_layout.addWidget(self.username_label)
+            username_layout.addWidget(self.username_edit_btn)
+            self.profile_form.addRow("用户名:", username_layout)
+            
+            # 地址显示和修改按钮
+            self.address_label = QLabel()
+            self.address_label.setWordWrap(True)
+            self.address_edit_btn = QPushButton("修改地址")
+            self.address_edit_btn.setStyleSheet("background-color: #2196F3; color: white;")
+            self.address_edit_btn.clicked.connect(self.edit_address)
+            
+            address_layout = QHBoxLayout()
+            address_layout.addWidget(self.address_label)
+            address_layout.addWidget(self.address_edit_btn)
+            self.profile_form.addRow("收货地址:", address_layout)
+            
+            # 密码修改按钮
+            self.password_edit_btn = QPushButton("修改密码")
+            self.password_edit_btn.setStyleSheet("background-color: #2196F3; color: white;")
+            self.password_edit_btn.clicked.connect(self.edit_password)
+            self.profile_form.addRow("密码:", self.password_edit_btn)
+            
+            layout.addLayout(self.profile_form)
+            layout.addStretch()
+            
+            self.load_profile_data()
+        
+        def load_profile_data(self):
             try:
                 connection = pymysql.connect(**self.db_config)
                 with connection.cursor() as cursor:
@@ -389,22 +419,103 @@ class LoginWindow(QMainWindow):
                     customer = cursor.fetchone()
                     
                     if customer:
-                        # 显示用户信息
-                        self.name_label = QLabel(customer.get('name', '未设置'))
-                        self.phone_label = QLabel(customer.get('phone', '未设置'))
-                        self.address_label = QLabel(customer.get('address', '未设置'))
-                        
-                        form_layout.addRow("姓名:", self.name_label)
-                        form_layout.addRow("电话:", self.phone_label)
-                        form_layout.addRow("地址:", self.address_label)
+                        self.username_label.setText(customer['username'])
+                        self.address_label.setText(customer.get('shipping_address', '未设置'))
             except Error as e:
                 QMessageBox.critical(self, "错误", f"加载个人信息失败：{str(e)}")
             finally:
                 if 'connection' in locals() and connection.open:
                     connection.close()
+        
+        def edit_username(self):
+            new_username, ok = QInputDialog.getText(
+                self, "修改用户名", "请输入新用户名:", 
+                QLineEdit.Normal, self.username_label.text()
+            )
             
-            layout.addLayout(form_layout)
-            layout.addStretch()
+            if ok and new_username:
+                if new_username == self.username_label.text():
+                    return
+                    
+                try:
+                    connection = pymysql.connect(**self.db_config)
+                    with connection.cursor() as cursor:
+                        cursor.execute("SELECT customer_id FROM customers WHERE username = %s", (new_username,))
+                        if cursor.fetchone():
+                            QMessageBox.warning(self, "警告", "用户名已存在")
+                            return
+                            
+                        cursor.execute(
+                            "UPDATE customers SET username = %s WHERE username = %s",
+                            (new_username, self.username)
+                        )
+                        connection.commit()
+                        
+                        self.username_label.setText(new_username)
+                        self.username = new_username
+                        QMessageBox.information(self, "成功", "用户名修改成功")
+                except Error as e:
+                    connection.rollback()
+                    QMessageBox.critical(self, "错误", f"修改用户名失败：{str(e)}")
+                finally:
+                    if 'connection' in locals() and connection.open:
+                        connection.close()
+        
+        def edit_address(self):
+            new_address, ok = QInputDialog.getMultiLineText(
+                self, "修改地址", "请输入新地址:", 
+                self.address_label.text()
+            )
+            
+            if ok:
+                try:
+                    connection = pymysql.connect(**self.db_config)
+                    with connection.cursor() as cursor:
+                        cursor.execute(
+                            "UPDATE customers SET shipping_address = %s WHERE username = %s",
+                            (new_address, self.username)
+                        )
+                        connection.commit()
+                        
+                        self.address_label.setText(new_address)
+                        QMessageBox.information(self, "成功", "地址修改成功")
+                except Error as e:
+                    connection.rollback()
+                    QMessageBox.critical(self, "错误", f"修改地址失败：{str(e)}")
+                finally:
+                    if 'connection' in locals() and connection.open:
+                        connection.close()
+        
+        def edit_password(self):
+            new_password, ok = QInputDialog.getText(
+                self, "修改密码", "请输入新密码:", 
+                QLineEdit.Password
+            )
+            
+            if ok and new_password:
+                confirm_password, ok = QInputDialog.getText(
+                    self, "确认密码", "请再次输入新密码:", 
+                    QLineEdit.Password
+                )
+                
+                if ok and new_password == confirm_password:
+                    try:
+                        connection = pymysql.connect(**self.db_config)
+                        with connection.cursor() as cursor:
+                            cursor.execute(
+                                "UPDATE customers SET password = %s WHERE username = %s",
+                                (new_password, self.username)
+                            )
+                            connection.commit()
+                            QMessageBox.information(self, "成功", "密码修改成功")
+                    except Error as e:
+                        connection.rollback()
+                        QMessageBox.critical(self, "错误", f"修改密码失败：{str(e)}")
+                    finally:
+                        if 'connection' in locals() and connection.open:
+                            connection.close()
+                elif ok:
+                    QMessageBox.warning(self, "警告", "两次输入的密码不一致")
         def load_cart_items(self):
             try:
                 # 清空现有购物车列表
