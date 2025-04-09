@@ -1183,10 +1183,8 @@ class LoginWindow(QMainWindow):
                     if dialog.exec_() == QDialog.Accepted:
                         selected_value = None
                         if value_list.currentItem():
-                            # 选择了现有规格值
                             selected_value = value_list.currentItem().text()
                         elif new_value_input.text().strip():
-                            # 添加了新规格值
                             new_value = new_value_input.text().strip()
                             cursor.execute("""
                                 INSERT INTO spec_values (spec_type_id, value)
@@ -1201,45 +1199,83 @@ class LoginWindow(QMainWindow):
                             self.spec_table.insertRow(row)
                             self.spec_table.setItem(row, 0, QTableWidgetItem(spec_type_name))
                             self.spec_table.setItem(row, 1, QTableWidgetItem(selected_value))
+                            
+                            # 不再自动生成SKU，改为提示用户手动生成
+                            QMessageBox.information(
+                                self, '提示', 
+                                '规格值已添加，请手动点击"添加SKU"按钮生成SKU记录'
+                            )
             except Error as e:
                 QMessageBox.critical(self, "错误", f"操作规格值失败：{str(e)}")
             finally:
                 if 'connection' in locals() and connection.open:
                     connection.close()
-
-        def add_sku(self):
-            # 获取选中的规格值
-            selected_values = []
-            for i in range(self.spec_value_list.count()):
-                if self.spec_value_list.item(i).isSelected():
-                    selected_values.append(self.spec_value_list.item(i))
-            
-            if not selected_values:
-                QMessageBox.warning(self, "警告", "请至少选择一个规格值")
+        def add_sku_from_specs(self):
+            """从规格表中生成SKU记录"""
+            if self.spec_table.rowCount() == 0:
+                QMessageBox.warning(self, "警告", "请先添加规格值")
                 return
                 
-            # 获取价格和库存
-            price, ok1 = QInputDialog.getDouble(self, "设置价格", "请输入价格:", 0, 0, 10000, 2)
-            stock, ok2 = QInputDialog.getInt(self, "设置库存", "请输入库存:", 0, 0, 10000)
+            # 收集所有规格值
+            specs = []
+            for row in range(self.spec_table.rowCount()):
+                spec_type = self.spec_table.item(row, 0).text()
+                spec_value = self.spec_table.item(row, 1).text()
+                specs.append(f"{spec_type}:{spec_value}")
             
-            if ok1 and ok2:
-                row = self.sku_table.rowCount()
-                self.sku_table.insertRow(row)
+            # 检查是否已存在相同规格组合
+            for row in range(self.sku_table.rowCount()):
+                if self.sku_table.item(row, 0).text() == " | ".join(specs):
+                    QMessageBox.warning(self, "警告", "该规格组合已存在")
+                    return
+                    
+            # 添加新SKU记录
+            row = self.sku_table.rowCount()
+            self.sku_table.insertRow(row)
+            self.sku_table.setItem(row, 0, QTableWidgetItem(" | ".join(specs)))
+            self.sku_table.setItem(row, 1, QTableWidgetItem("点击设置价格"))
+            self.sku_table.setItem(row, 2, QTableWidgetItem("点击设置库存"))
+            
+            # 清空规格表以便添加新规格
+            self.spec_table.setRowCount(0)
+            QMessageBox.information(self, "成功", "SKU记录已生成")
+
+        def add_sku(self):
+            """为当前规格组合创建SKU记录"""
+            # 检查规格表中是否有规格值
+            if self.spec_table.rowCount() > 0:
+                # 如果有规格值，先调用add_sku_from_specs生成SKU记录
+                self.add_sku_from_specs()
+                return
                 
-                # 规格组合显示
-                spec_text = " | ".join([item.text() for item in selected_values])
-                self.sku_table.setItem(row, 0, QTableWidgetItem(spec_text))
+            # 检查SKU表中是否有待设置的SKU记录
+            if self.sku_table.rowCount() == 0:
+                QMessageBox.warning(self, "警告", "请先添加规格组合")
+                return
                 
-                # 价格
-                self.sku_table.setItem(row, 1, QTableWidgetItem(f"¥{price:.2f}"))
+            # 获取最后添加的SKU记录(最新添加的)
+            last_row = self.sku_table.rowCount() - 1
+            sku_item = self.sku_table.item(last_row, 0)
+            
+            if not sku_item or "点击" not in self.sku_table.item(last_row, 1).text():
+                QMessageBox.warning(self, "警告", "请先添加规格组合")
+                return
                 
-                # 库存
-                self.sku_table.setItem(row, 2, QTableWidgetItem(f"{stock}件"))
+            # 设置价格
+            price, ok1 = QInputDialog.getDouble(
+                self, "设置价格", "请输入价格:", 
+                0, 0, 10000, 2
+            )
+            if ok1:
+                self.sku_table.setItem(last_row, 1, QTableWidgetItem(f"¥{price:.2f}"))
                 
-                # 保存规格值ID
-                spec_value_ids = [item.data(Qt.UserRole) for item in selected_values]
-                self.sku_table.item(row, 0).setData(Qt.UserRole, spec_value_ids)
-        
+            # 设置库存
+            stock, ok2 = QInputDialog.getInt(
+                self, "设置库存", "请输入库存:", 
+                0, 0, 10000
+            )
+            if ok2:
+                self.sku_table.setItem(last_row, 2, QTableWidgetItem(f"{stock}件"))
         def add_product(self):
             # 验证基本信息
             name = self.product_name_input.text().strip()
@@ -1254,6 +1290,14 @@ class LoginWindow(QMainWindow):
                 QMessageBox.warning(self, "警告", "请至少添加一个SKU")
                 return
                 
+            # 验证所有SKU是否已设置价格和库存
+            for row in range(self.sku_table.rowCount()):
+                price_item = self.sku_table.item(row, 1)
+                stock_item = self.sku_table.item(row, 2)
+                if not price_item or not stock_item or "点击" in price_item.text() or "点击" in stock_item.text():
+                    QMessageBox.warning(self, "警告", f"第{row+1}行SKU的价格或库存未设置")
+                    return
+                    
             try:
                 connection = pymysql.connect(**self.db_config)
                 with connection.cursor() as cursor:
@@ -1264,10 +1308,10 @@ class LoginWindow(QMainWindow):
                     )
                     product_id = cursor.lastrowid
                     
-                    # 添加SKU信息
+                    # 添加所有SKU信息
                     for row in range(self.sku_table.rowCount()):
-                        price = float(self.sku_table.item(row, 1).text())
-                        stock = int(self.sku_table.item(row, 2).text())
+                        price = float(self.sku_table.item(row, 1).text().replace("¥", ""))
+                        stock = int(self.sku_table.item(row, 2).text().replace("件", ""))
                         
                         # 添加SKU
                         cursor.execute(
@@ -1276,12 +1320,22 @@ class LoginWindow(QMainWindow):
                         )
                         sku_id = cursor.lastrowid
                         
-                        # 添加SKU规格关联
-                        spec_value_id = self.sku_table.item(row, 0).data(Qt.UserRole)
-                        cursor.execute(
-                            "INSERT INTO sku_specs (sku_id, spec_value_id) VALUES (%s, %s)",
-                            (sku_id, spec_value_id)
-                        )
+                        # 解析规格组合并添加到sku_specs表
+                        specs = self.sku_table.item(row, 0).text().split(" | ")
+                        for spec in specs:
+                            spec_type, spec_value = spec.split(":")
+                            cursor.execute("""
+                                SELECT sv.spec_value_id 
+                                FROM spec_values sv
+                                JOIN spec_types st ON sv.spec_type_id = st.spec_type_id
+                                WHERE st.name = %s AND sv.value = %s
+                            """, (spec_type, spec_value))
+                            spec_value_id = cursor.fetchone()['spec_value_id']
+                            
+                            cursor.execute(
+                                "INSERT INTO sku_specs (sku_id, spec_value_id) VALUES (%s, %s)",
+                                (sku_id, spec_value_id)
+                            )
                     
                     connection.commit()
                     QMessageBox.information(self, "成功", "商品上架成功")
@@ -1291,6 +1345,7 @@ class LoginWindow(QMainWindow):
                     self.product_desc_input.clear()
                     self.product_image_input.clear()
                     self.sku_table.setRowCount(0)
+                    self.spec_table.setRowCount(0)
                     
             except Error as e:
                 connection.rollback()
