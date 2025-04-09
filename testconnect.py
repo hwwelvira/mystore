@@ -539,7 +539,7 @@ class LoginWindow(QMainWindow):
                             JOIN carts c ON ci.cart_id = c.cart_id
                             JOIN skus s ON ci.sku_id = s.sku_id
                             JOIN products p ON s.product_id = p.product_id
-                            WHERE c.customer_id = %s
+                            WHERE c.customer_id = %s AND p.is_delete = 0
                         """, (customer['customer_id'],))
                         cart_items = cursor.fetchall()
                         
@@ -735,7 +735,41 @@ class LoginWindow(QMainWindow):
                 tracking_label = QLabel(f"物流单号: {order_info['tracking_number']}")
                 layout.addWidget(tracking_label)
             
+            # 添加确认收货按钮(仅显示正在派送的订单)
+            if order_info['status'] == 'shipped':
+                confirm_btn = QPushButton("确认收货")
+                confirm_btn.clicked.connect(lambda _, o=order_info: self.confirm_delivery(o))
+                layout.addWidget(confirm_btn)
+            
             self.orders_scroll_layout.addWidget(order_frame)
+
+        def confirm_delivery(self, order_info):
+            reply = QMessageBox.question(
+                self, '确认收货',
+                f'确认订单 #{order_info["order_id"]} 已收到货吗？',
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+            )
+            
+            if reply == QMessageBox.Yes:
+                try:
+                    connection = pymysql.connect(**self.db_config)
+                    with connection.cursor() as cursor:
+                        cursor.execute("""
+                            UPDATE orders 
+                            SET status = 'delivered',
+                                delivered_at = NOW()
+                            WHERE order_id = %s
+                        """, (order_info['order_id'],))
+                        connection.commit()
+                        
+                        QMessageBox.information(self, "成功", "订单状态已更新为已收货")
+                        self.load_orders()  # 刷新订单列表
+                except Error as e:
+                    connection.rollback()
+                    QMessageBox.critical(self, "错误", f"确认收货失败：{str(e)}")
+                finally:
+                    if 'connection' in locals() and connection.open:
+                        connection.close()
         
         def update_cart_item_quantity(self, cart_item_id, quantity):
             try:
@@ -770,8 +804,12 @@ class LoginWindow(QMainWindow):
             try:
                 connection = pymysql.connect(**self.db_config)
                 with connection.cursor() as cursor:
-                    # 获取用户ID
-                    cursor.execute("SELECT customer_id FROM customers WHERE username = %s", (self.username,))
+                    # 获取用户ID和地址
+                    cursor.execute("""
+                        SELECT customer_id, shipping_address 
+                        FROM customers 
+                        WHERE username = %s
+                    """, (self.username,))
                     customer = cursor.fetchone()
                     
                     if customer:
@@ -786,11 +824,11 @@ class LoginWindow(QMainWindow):
                         cart_items = cursor.fetchall()
                         
                         if cart_items:
-                            # 创建订单
+                            # 创建订单(包含地址)
                             cursor.execute("""
-                                INSERT INTO orders (customer_id, status)
-                                VALUES (%s, 'paid')
-                            """, (customer['customer_id'],))
+                                INSERT INTO orders (customer_id, status, shipping_address)
+                                VALUES (%s, 'paid', %s)
+                            """, (customer['customer_id'], customer['shipping_address']))
                             order_id = cursor.lastrowid
                             
                             # 添加订单商品
@@ -988,8 +1026,11 @@ class LoginWindow(QMainWindow):
             # 店长专属选项卡
             if self.is_manager:
                 self.manage_staff_tab = QWidget()
+                self.sales_stats_tab = QWidget()
                 self.tab_bar.addTab(self.manage_staff_tab, "管理店员")
+                self.tab_bar.addTab(self.sales_stats_tab, "销量统计")
                 self.init_manage_staff_tab()
+                self.init_sales_stats_tab()
             
             # 初始化各选项卡
             self.init_add_product_tab()
@@ -1059,27 +1100,31 @@ class LoginWindow(QMainWindow):
             layout.addWidget(self.spec_group)
             
             # SKU管理区域
-            self.sku_group = QGroupBox("SKU管理")
-            self.sku_group.setStyleSheet("QGroupBox { padding: 10px; }")
-            self.sku_layout = QVBoxLayout()
+            #self.sku_group = QGroupBox("SKU管理")
+            #self.sku_group.setStyleSheet("QGroupBox { padding: 10px; }")
+            #self.sku_layout = QVBoxLayout()
             
             # SKU表格
-            self.sku_table = QTableWidget()
-            self.sku_table.setColumnCount(3)
-            self.sku_table.setHorizontalHeaderLabels(["规格组合", "价格", "库存"])
-            self.sku_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
-            self.sku_table.setColumnWidth(1, 100)
-            self.sku_table.setColumnWidth(2, 100)
-            self.sku_table.setFixedHeight(250)
-            self.sku_layout.addWidget(self.sku_table)
+            #self.sku_table = QTableWidget()
+            #self.sku_table.setColumnCount(3)
+            #self.sku_table.setHorizontalHeaderLabels(["规格组合", "价格", "库存"])
+            #self.sku_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+            #self.sku_table.setColumnWidth(1, 100)
+            #self.sku_table.setColumnWidth(2, 100)
+            #self.sku_table.setRowCount(0)  # 初始设置为0行
+            # 确保表格被添加到布局中
+            #self.sku_layout.addWidget(self.sku_table)
+            # self.sku_group.setLayout(self.sku_layout)
+            #layout.addWidget(self.sku_group)
             
             # 添加SKU按钮
-            self.add_sku_btn = QPushButton("添加SKU")
-            self.add_sku_btn.clicked.connect(self.add_sku)
-            self.sku_layout.addWidget(self.add_sku_btn)
+            #self.add_sku_btn = QPushButton("添加SKU")
+            #self.add_sku_btn.clicked.connect(self.add_sku)
+            #layout.addWidget(self.add_sku_btn)
             
-            self.sku_group.setLayout(self.sku_layout)
-            layout.addWidget(self.sku_group)
+            
+            #self.sku_group.setLayout(self.sku_layout)
+            #layout.addWidget(self.sku_group)
             
             # 上架按钮
             self.add_product_btn = QPushButton("上架商品")
@@ -1090,6 +1135,7 @@ class LoginWindow(QMainWindow):
             #self.load_spec_types()
             
             # 设置选项卡布局
+            self.add_product_scroll.setWidget(self.add_product_scroll_content)
             self.add_product_tab.setLayout(QVBoxLayout())
             self.add_product_tab.layout().addWidget(self.add_product_scroll)
             self.add_product_tab.layout().setContentsMargins(0, 0, 0, 0)
@@ -1224,21 +1270,41 @@ class LoginWindow(QMainWindow):
                 specs.append(f"{spec_type}:{spec_value}")
             
             # 检查是否已存在相同规格组合
-            for row in range(self.sku_table.rowCount()):
-                if self.sku_table.item(row, 0).text() == " | ".join(specs):
-                    QMessageBox.warning(self, "警告", "该规格组合已存在")
-                    return
+            #for row in range(self.sku_table.rowCount()):
+                #if self.sku_table.item(row, 0).text() == " | ".join(specs):
+                    #QMessageBox.warning(self, "警告", "该规格组合已存在")
+                    #return
                     
             # 添加新SKU记录
-            row = self.sku_table.rowCount()
-            self.sku_table.insertRow(row)
-            self.sku_table.setItem(row, 0, QTableWidgetItem(" | ".join(specs)))
-            self.sku_table.setItem(row, 1, QTableWidgetItem("点击设置价格"))
-            self.sku_table.setItem(row, 2, QTableWidgetItem("点击设置库存"))
+            #row = self.sku_table.rowCount()
+            #self.sku_table.insertRow(row)
+            #self.sku_table.setItem(row, 0, QTableWidgetItem(" | ".join(specs)))
+            #self.sku_table.setItem(row, 1, QTableWidgetItem("点击设置价格"))
+            #self.sku_table.setItem(row, 2, QTableWidgetItem("点击设置库存"))
             
+            # 确保表格可见
+            #self.sku_table.setVisible(True)
+            #self.sku_table.viewport().update()
+            # 强制刷新表格
+            #self.sku_table.update()
+            #self.sku_table.repaint()
             # 清空规格表以便添加新规格
             self.spec_table.setRowCount(0)
-            QMessageBox.information(self, "成功", "SKU记录已生成")
+            # 直接弹出对话框设置价格和库存
+            price, ok1 = QInputDialog.getDouble(
+                self, "设置价格", "请输入价格:", 
+                0, 0, 10000, 2
+            )
+            
+            if ok1:
+                stock, ok2 = QInputDialog.getInt(
+                    self, "设置库存", "请输入库存:", 
+                    0, 0, 10000
+                )
+                
+                if ok2:
+                    # 这里可以添加逻辑将SKU信息保存到数据库或内存中
+                    QMessageBox.information(self, "成功", f"SKU已添加\n规格: {' | '.join(specs)}\n价格: ¥{price:.2f}\n库存: {stock}件")
 
         def add_sku(self):
             """为当前规格组合创建SKU记录"""
@@ -1276,6 +1342,8 @@ class LoginWindow(QMainWindow):
             )
             if ok2:
                 self.sku_table.setItem(last_row, 2, QTableWidgetItem(f"{stock}件"))
+                self.sku_table.update()
+                self.sku_table.repaint()
         def add_product(self):
             # 验证基本信息
             name = self.product_name_input.text().strip()
@@ -1286,56 +1354,66 @@ class LoginWindow(QMainWindow):
                 QMessageBox.warning(self, "警告", "请输入商品名称")
                 return
                 
-            if self.sku_table.rowCount() == 0:
-                QMessageBox.warning(self, "警告", "请至少添加一个SKU")
+            # 检查是否有规格值
+            if self.spec_table.rowCount() == 0:
+                QMessageBox.warning(self, "警告", "请至少添加一个规格组合")
                 return
                 
-            # 验证所有SKU是否已设置价格和库存
-            for row in range(self.sku_table.rowCount()):
-                price_item = self.sku_table.item(row, 1)
-                stock_item = self.sku_table.item(row, 2)
-                if not price_item or not stock_item or "点击" in price_item.text() or "点击" in stock_item.text():
-                    QMessageBox.warning(self, "警告", f"第{row+1}行SKU的价格或库存未设置")
-                    return
-                    
             try:
                 connection = pymysql.connect(**self.db_config)
                 with connection.cursor() as cursor:
-                    # 添加商品基本信息
+                    # 插入商品基本信息
                     cursor.execute(
-                        "INSERT INTO products (name, description, main_image) VALUES (%s, %s, %s)",
+                        "INSERT INTO products (name, description, main_image, is_delete) VALUES (%s, %s, %s, 0)",
                         (name, desc, image)
                     )
                     product_id = cursor.lastrowid
                     
-                    # 添加所有SKU信息
-                    for row in range(self.sku_table.rowCount()):
-                        price = float(self.sku_table.item(row, 1).text().replace("¥", ""))
-                        stock = int(self.sku_table.item(row, 2).text().replace("件", ""))
+                    # 收集所有规格值
+                    specs = []
+                    for row in range(self.spec_table.rowCount()):
+                        spec_type = self.spec_table.item(row, 0).text()
+                        spec_value = self.spec_table.item(row, 1).text()
+                        specs.append(f"{spec_type}:{spec_value}")
+                    
+                    # 添加SKU信息
+                    price, ok1 = QInputDialog.getDouble(
+                        self, "设置价格", "请输入价格:", 
+                        0, 0, 10000, 2
+                    )
+                    
+                    if not ok1:
+                        return
                         
-                        # 添加SKU
+                    stock, ok2 = QInputDialog.getInt(
+                        self, "设置库存", "请输入库存:", 
+                        0, 0, 10000
+                    )
+                    
+                    if not ok2:
+                        return
+                    
+                    cursor.execute(
+                        "INSERT INTO skus (product_id, price, stock) VALUES (%s, %s, %s)",
+                        (product_id, price, stock)
+                    )
+                    sku_id = cursor.lastrowid
+                    
+                    # 添加规格组合到sku_specs表
+                    for spec in specs:
+                        spec_type, spec_value = spec.split(":")
+                        cursor.execute("""
+                            SELECT sv.spec_value_id 
+                            FROM spec_values sv
+                            JOIN spec_types st ON sv.spec_type_id = st.spec_type_id
+                            WHERE st.name = %s AND sv.value = %s
+                        """, (spec_type, spec_value))
+                        spec_value_id = cursor.fetchone()['spec_value_id']
+                        
                         cursor.execute(
-                            "INSERT INTO skus (product_id, price, stock) VALUES (%s, %s, %s)",
-                            (product_id, price, stock)
+                            "INSERT INTO sku_specs (sku_id, spec_value_id) VALUES (%s, %s)",
+                            (sku_id, spec_value_id)
                         )
-                        sku_id = cursor.lastrowid
-                        
-                        # 解析规格组合并添加到sku_specs表
-                        specs = self.sku_table.item(row, 0).text().split(" | ")
-                        for spec in specs:
-                            spec_type, spec_value = spec.split(":")
-                            cursor.execute("""
-                                SELECT sv.spec_value_id 
-                                FROM spec_values sv
-                                JOIN spec_types st ON sv.spec_type_id = st.spec_type_id
-                                WHERE st.name = %s AND sv.value = %s
-                            """, (spec_type, spec_value))
-                            spec_value_id = cursor.fetchone()['spec_value_id']
-                            
-                            cursor.execute(
-                                "INSERT INTO sku_specs (sku_id, spec_value_id) VALUES (%s, %s)",
-                                (sku_id, spec_value_id)
-                            )
                     
                     connection.commit()
                     QMessageBox.information(self, "成功", "商品上架成功")
@@ -1344,7 +1422,6 @@ class LoginWindow(QMainWindow):
                     self.product_name_input.clear()
                     self.product_desc_input.clear()
                     self.product_image_input.clear()
-                    self.sku_table.setRowCount(0)
                     self.spec_table.setRowCount(0)
                     
             except Error as e:
@@ -1419,7 +1496,8 @@ class LoginWindow(QMainWindow):
                         LEFT JOIN sku_specs ss ON s.sku_id = ss.sku_id
                         LEFT JOIN spec_values sv ON ss.spec_value_id = sv.spec_value_id
                         LEFT JOIN spec_types st ON sv.spec_type_id = st.spec_type_id
-                        WHERE s.product_id = %s
+                        JOIN products p ON s.product_id = p.product_id
+                        WHERE s.product_id = %s AND p.is_delete = 0
                         GROUP BY s.sku_id
                     """, (self.current_product_id,))
                     skus = cursor.fetchall()
@@ -1514,55 +1592,404 @@ class LoginWindow(QMainWindow):
         def init_ship_orders_tab(self):
             layout = QVBoxLayout(self.ship_orders_tab)
             
-            # 订单列表
-            self.order_list = QTableWidget()
-            self.order_list.setColumnCount(5)
-            self.order_list.setHorizontalHeaderLabels(["订单号", "下单时间", "状态", "操作", "物流单号"])
-            layout.addWidget(self.order_list)
+            # 标题
+            title_label = QLabel("订单管理")
+            title_label.setStyleSheet("font-size: 24px; font-weight: bold;")
+            title_label.setAlignment(Qt.AlignCenter)
+            layout.addWidget(title_label)
             
-            self.load_orders()
-        
-        def load_orders(self):
-            # 加载待发货订单
-            pass
+            # 搜索框
+            search_layout = QHBoxLayout()
+            self.order_search_input = QLineEdit()
+            self.order_search_input.setPlaceholderText("输入订单号或买家昵称搜索...")
+            search_btn = QPushButton("搜索")
+            search_btn.clicked.connect(self.load_all_orders)
+            search_layout.addWidget(self.order_search_input)
+            search_layout.addWidget(search_btn)
+            layout.addLayout(search_layout)
+            
+            # 订单列表滚动区域
+            self.orders_scroll_area = QScrollArea()
+            self.orders_scroll_content = QWidget()
+            self.orders_scroll_layout = QVBoxLayout(self.orders_scroll_content)
+            
+            self.orders_scroll_area.setWidgetResizable(True)
+            self.orders_scroll_area.setWidget(self.orders_scroll_content)
+            layout.addWidget(self.orders_scroll_area)
+            
+            # 加载所有订单
+            self.load_all_orders()
+
+        def load_all_orders(self):
+            try:
+                # 清空现有订单列表
+                for i in reversed(range(self.orders_scroll_layout.count())): 
+                    self.orders_scroll_layout.itemAt(i).widget().setParent(None)
+                
+                connection = pymysql.connect(**self.db_config)
+                with connection.cursor() as cursor:
+                    keyword = self.order_search_input.text().strip()
+                    query = """
+                        SELECT o.order_id, o.status, o.created_at, 
+                               o.shipped_at, o.delivered_at, o.tracking_number,
+                               o.shipping_address, c.username as customer_name,
+                               GROUP_CONCAT(p.name SEPARATOR ', ') as product_names
+                        FROM orders o
+                        JOIN customers c ON o.customer_id = c.customer_id
+                        JOIN order_items oi ON o.order_id = oi.order_id
+                        JOIN skus s ON oi.sku_id = s.sku_id
+                        JOIN products p ON s.product_id = p.product_id
+                        WHERE o.order_id LIKE %s OR c.username LIKE %s
+                        GROUP BY o.order_id
+                        ORDER BY o.created_at DESC
+                    """
+                    cursor.execute(query, (f"%{keyword}%", f"%{keyword}%"))
+                    orders = cursor.fetchall()
+                    
+                    for order in orders:
+                        self.add_order_item_to_ship_tab(order)
+            except Error as e:
+                QMessageBox.critical(self, "错误", f"加载订单失败：{str(e)}")
+            finally:
+                if 'connection' in locals() and connection.open:
+                    connection.close()
+
+        def add_order_item_to_ship_tab(self, order):
+            order_frame = QFrame()
+            order_frame.setFrameShape(QFrame.StyledPanel)
+            order_frame.setStyleSheet("margin: 10px; padding: 10px;")
+            
+            layout = QVBoxLayout(order_frame)
+            
+            # 订单基本信息
+            status_map = {
+                'paid': '待发货',
+                'shipped': '正在派送',
+                'delivered': '已送达'
+            }
+            status_text = status_map.get(order['status'], order['status'])
+            
+            order_header = QLabel(f"订单号: {order['order_id']} | 状态: {status_text} | 买家: {order['customer_name']}")
+            order_header.setStyleSheet("font-size: 16px; font-weight: bold;")
+            layout.addWidget(order_header)
+            
+            # 时间信息
+            time_info = QLabel(f"下单时间: {order['created_at']}")
+            if order['shipped_at']:
+                time_info.setText(time_info.text() + f" | 发货时间: {order['shipped_at']}")
+            if order['delivered_at']:
+                time_info.setText(time_info.text() + f" | 送达时间: {order['delivered_at']}")
+            layout.addWidget(time_info)
+            
+            # 收货地址
+            if order['shipping_address']:
+                address_label = QLabel(f"收货地址: {order['shipping_address']}")
+                address_label.setWordWrap(True)
+                layout.addWidget(address_label)
+            
+            # 商品信息
+            if order['product_names']:
+                products_label = QLabel(f"商品: {order['product_names']}")
+                products_label.setWordWrap(True)
+                layout.addWidget(products_label)
+            
+            # 物流信息
+            if order['tracking_number']:
+                tracking_label = QLabel(f"快递单号: {order['tracking_number']}")
+                layout.addWidget(tracking_label)
+            
+            # 发货按钮(仅显示待发货订单)
+            if order['status'] == 'paid':
+                ship_btn = QPushButton("发货")
+                ship_btn.clicked.connect(lambda _, o=order: self.ship_order(o))
+                layout.addWidget(ship_btn)
+            
+            self.orders_scroll_layout.addWidget(order_frame)
+
+        def ship_order(self, order):
+            # 发货对话框
+            dialog = QDialog(self)
+            dialog.setWindowTitle(f"发货 - 订单 #{order['order_id']}")
+            dialog.setFixedSize(400, 200)
+            
+            layout = QVBoxLayout(dialog)
+            
+            # 快递单号输入
+            tracking_layout = QHBoxLayout()
+            tracking_label = QLabel("快递单号:")
+            self.tracking_input = QLineEdit()
+            tracking_layout.addWidget(tracking_label)
+            tracking_layout.addWidget(self.tracking_input)
+            layout.addLayout(tracking_layout)
+            
+            # 按钮
+            btn_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+            btn_box.accepted.connect(dialog.accept)
+            btn_box.rejected.connect(dialog.reject)
+            layout.addWidget(btn_box)
+            
+            if dialog.exec_() == QDialog.Accepted:
+                tracking_number = self.tracking_input.text().strip()
+                if not tracking_number:
+                    QMessageBox.warning(self, "警告", "请输入快递单号")
+                    return
+                
+                try:
+                    connection = pymysql.connect(**self.db_config)
+                    with connection.cursor() as cursor:
+                        cursor.execute("""
+                            UPDATE orders 
+                            SET status = 'shipped', 
+                                tracking_number = %s,
+                                shipped_at = NOW()
+                            WHERE order_id = %s
+                        """, (tracking_number, order['order_id']))
+                        connection.commit()
+                        
+                        QMessageBox.information(self, "成功", "订单已发货")
+                        self.load_all_orders()  # 刷新订单列表
+                except Error as e:
+                    connection.rollback()
+                    QMessageBox.critical(self, "错误", f"发货失败：{str(e)}")
+                finally:
+                    if 'connection' in locals() and connection.open:
+                        connection.close()
         
         def init_manage_staff_tab(self):
             layout = QVBoxLayout(self.manage_staff_tab)
             
-            # 店员列表
-            self.staff_list = QTableWidget()
-            self.staff_list.setColumnCount(4)
-            self.staff_list.setHorizontalHeaderLabels(["用户名", "职位", "操作", "删除"])
-            layout.addWidget(self.staff_list)
+            # 标题
+            title_label = QLabel("店员管理")
+            title_label.setStyleSheet("font-size: 24px; font-weight: bold;")
+            title_label.setAlignment(Qt.AlignCenter)
+            layout.addWidget(title_label)
             
-            # 添加店员表单
-            form_layout = QFormLayout()
+            # 店员表格
+            self.staff_table = QTableWidget()
+            self.staff_table.setColumnCount(3)
+            self.staff_table.setHorizontalHeaderLabels(["用户名", "密码", "操作"])
+            self.staff_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+            self.staff_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+            layout.addWidget(self.staff_table)
             
-            self.new_staff_username = QLineEdit()
-            self.new_staff_password = QLineEdit()
-            self.new_staff_password.setEchoMode(QLineEdit.Password)
-            self.new_staff_position = QComboBox()
-            self.new_staff_position.addItems(["店员", "店长"])
+            # 按钮区域
+            button_layout = QHBoxLayout()
             
-            form_layout.addRow("用户名:", self.new_staff_username)
-            form_layout.addRow("密码:", self.new_staff_password)
-            form_layout.addRow("职位:", self.new_staff_position)
-            
+            # 添加店员按钮
             self.add_staff_btn = QPushButton("添加店员")
-            self.add_staff_btn.clicked.connect(self.add_staff)
-            form_layout.addRow(self.add_staff_btn)
+            self.add_staff_btn.clicked.connect(self.show_add_staff_dialog)
+            button_layout.addWidget(self.add_staff_btn)
             
-            layout.addLayout(form_layout)
+            # 刷新按钮
+            self.refresh_btn = QPushButton("刷新列表")
+            self.refresh_btn.clicked.connect(self.load_staff_list)
+            button_layout.addWidget(self.refresh_btn)
             
+            layout.addLayout(button_layout)
+            
+            # 加载店员列表
             self.load_staff_list()
         
         def load_staff_list(self):
-            # 加载店员列表
-            pass
+            try:
+                connection = pymysql.connect(**self.db_config)
+                with connection.cursor() as cursor:
+                    # 修改查询语句，使用staff表而不是staffs表
+                    cursor.execute("SELECT staff_id, name, password, role FROM staff")
+                    staffs = cursor.fetchall()
+                    
+                    self.staff_table.setRowCount(0)
+                    for row, staff in enumerate(staffs):
+                        self.staff_table.insertRow(row)
+                        
+                        # 用户名改为name字段
+                        self.staff_table.setItem(row, 0, QTableWidgetItem(staff['name']))
+                        
+                        # 密码(可编辑)
+                        password_item = QTableWidgetItem(staff['password'])
+                        password_item.setFlags(password_item.flags() | Qt.ItemIsEditable)
+                        self.staff_table.setItem(row, 1, password_item)
+                        
+                        # 操作按钮
+                        btn_layout = QHBoxLayout()
+                        
+                        # 保存按钮
+                        save_btn = QPushButton("保存")
+                        save_btn.clicked.connect(lambda _, r=row: self.save_staff_changes(r))
+                        btn_layout.addWidget(save_btn)
+                        
+                        # 删除按钮
+                        delete_btn = QPushButton("删除")
+                        delete_btn.setStyleSheet("background-color: #F44336; color: white;")
+                        delete_btn.clicked.connect(lambda _, r=row: self.delete_staff(r))
+                        btn_layout.addWidget(delete_btn)
+                        
+                        # 添加按钮到表格
+                        widget = QWidget()
+                        widget.setLayout(btn_layout)
+                        self.staff_table.setCellWidget(row, 2, widget)
+                        
+                        # 保存staff_id
+                        self.staff_table.item(row, 0).setData(Qt.UserRole, staff['staff_id'])
+            except Error as e:
+                QMessageBox.critical(self, "错误", f"加载店员列表失败：{str(e)}")
+            finally:
+                if 'connection' in locals() and connection.open:
+                    connection.close()
         
-        def add_staff(self):
-            # 实现添加店员逻辑
-            pass
+        def show_add_staff_dialog(self):
+            dialog = QDialog(self)
+            dialog.setWindowTitle("添加新店员")
+            dialog.setFixedSize(400, 200)
+            
+            layout = QVBoxLayout(dialog)
+            
+            # 用户名输入
+            username_layout = QHBoxLayout()
+            username_label = QLabel("用户名:")
+            self.new_username_input = QLineEdit()
+            username_layout.addWidget(username_label)
+            username_layout.addWidget(self.new_username_input)
+            layout.addLayout(username_layout)
+            
+            # 密码输入
+            password_layout = QHBoxLayout()
+            password_label = QLabel("密码:")
+            self.new_password_input = QLineEdit()
+            self.new_password_input.setEchoMode(QLineEdit.Password)
+            password_layout.addWidget(password_label)
+            password_layout.addWidget(self.new_password_input)
+            layout.addLayout(password_layout)
+            
+            # 确认密码
+            confirm_layout = QHBoxLayout()
+            confirm_label = QLabel("确认密码:")
+            self.confirm_password_input = QLineEdit()
+            self.confirm_password_input.setEchoMode(QLineEdit.Password)
+            confirm_layout.addWidget(confirm_label)
+            confirm_layout.addWidget(self.confirm_password_input)
+            layout.addLayout(confirm_layout)
+            
+            # 按钮
+            btn_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+            btn_box.accepted.connect(dialog.accept)
+            btn_box.rejected.connect(dialog.reject)
+            layout.addWidget(btn_box)
+            
+            if dialog.exec_() == QDialog.Accepted:
+                self.add_new_staff()
+        
+        def add_new_staff(self):
+            username = self.new_username_input.text().strip()
+            password = self.new_password_input.text().strip()
+            confirm_password = self.confirm_password_input.text().strip()
+            
+            if not username or not password:
+                QMessageBox.warning(self, "警告", "用户名和密码不能为空")
+                return
+                
+            if password != confirm_password:
+                QMessageBox.warning(self, "警告", "两次输入的密码不一致")
+                return
+                
+            try:
+                connection = pymysql.connect(**self.db_config)
+                with connection.cursor() as cursor:
+                    # 检查用户名是否已存在
+                    cursor.execute("SELECT name FROM staff WHERE name = %s", (username,))
+                    if cursor.fetchone():
+                        QMessageBox.warning(self, "警告", "用户名已存在")
+                        return
+                        
+                    # 添加新店员，role默认为False(普通店员)
+                    cursor.execute(
+                        "INSERT INTO staff (name, password, role) VALUES (%s, %s, 0)",
+                        (username, password)
+                    )
+                    connection.commit()
+                    
+                    QMessageBox.information(self, "成功", "店员添加成功")
+                    self.load_staff_list()
+                    
+            except Error as e:
+                connection.rollback()
+                QMessageBox.critical(self, "错误", f"添加店员失败：{str(e)}")
+            finally:
+                if 'connection' in locals() and connection.open:
+                    connection.close()
+
+        
+        def save_staff_changes(self, row):
+            staff_id = self.staff_table.item(row, 0).data(Qt.UserRole)
+            new_password = self.staff_table.item(row, 1).text()
+            
+            if not new_password:
+                QMessageBox.warning(self, "警告", "密码不能为空")
+                return
+                
+            try:
+                connection = pymysql.connect(**self.db_config)
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        "UPDATE staff SET password = %s WHERE staff_id = %s",
+                        (new_password, staff_id)
+                    )
+                    connection.commit()
+                    
+                    QMessageBox.information(self, "成功", "密码修改成功")
+                    
+            except Error as e:
+                connection.rollback()
+                QMessageBox.critical(self, "错误", f"修改密码失败：{str(e)}")
+            finally:
+                if 'connection' in locals() and connection.open:
+                    connection.close()
+
+        def delete_staff(self, row):
+            staff_id = self.staff_table.item(row, 0).data(Qt.UserRole)
+            staff_name = self.staff_table.item(row, 0).text()
+            
+            reply = QMessageBox.question(
+                self, '确认', 
+                f'确定要删除店员 {staff_name} 吗？',
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+            )
+            
+            if reply == QMessageBox.Yes:
+                try:
+                    connection = pymysql.connect(**self.db_config)
+                    with connection.cursor() as cursor:
+                        cursor.execute(
+                            "DELETE FROM staff WHERE staff_id = %s",
+                            (staff_id,)
+                        )
+                        connection.commit()
+                        
+                        QMessageBox.information(self, "成功", "店员删除成功")
+                        self.load_staff_list()
+                        
+                except Error as e:
+                    connection.rollback()
+                    QMessageBox.critical(self, "错误", f"删除店员失败：{str(e)}")
+                finally:
+                    if 'connection' in locals() and connection.open:
+                        connection.close()
+        def init_sales_stats_tab(self):
+            layout = QVBoxLayout(self.sales_stats_tab)
+            
+            # 标题
+            title_label = QLabel("销量统计")
+            title_label.setStyleSheet("font-size: 24px; font-weight: bold;")
+            title_label.setAlignment(Qt.AlignCenter)
+            layout.addWidget(title_label)
+            
+            # 这里可以添加销量统计的具体UI组件
+            # 例如: 时间范围选择、统计图表等
+            
+            # 占位文本，后续可以替换为实际功能
+            placeholder = QLabel("销量统计功能开发中...")
+            placeholder.setAlignment(Qt.AlignCenter)
+            layout.addWidget(placeholder)
 
     def handle_login(self):
         username = self.username_input.text().strip()
