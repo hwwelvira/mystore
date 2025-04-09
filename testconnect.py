@@ -5,6 +5,8 @@ from PyQt5.QtGui import *
 from PyQt5.QtCore import *
 import pymysql
 from pymysql import Error
+from PyQt5.QtChart import QChart, QChartView, QPieSeries
+from PyQt5.QtGui import QPainter
 
 
 class LoginWindow(QMainWindow):
@@ -77,6 +79,102 @@ class LoginWindow(QMainWindow):
 
         # 添加一些间距
         self.main_layout.addSpacing(20)
+        # 添加注册按钮
+        self.register_button = QPushButton("新买家？去注册->")
+        self.register_button.setStyleSheet("color: #2196F3; border: none;")
+        self.register_button.clicked.connect(self.show_register_dialog)
+        self.main_layout.addWidget(self.register_button)
+            
+        # 添加一些间距
+        self.main_layout.addSpacing(20)
+    def show_register_dialog(self):
+        dialog = QDialog(self)
+        dialog.setWindowTitle("用户注册")
+        dialog.setFixedSize(400, 300)
+            
+        layout = QVBoxLayout(dialog)
+            
+        # 用户名输入
+        username_layout = QHBoxLayout()
+        username_label = QLabel("用户名：")
+        self.register_username_input = QLineEdit()
+        username_layout.addWidget(username_label)
+        username_layout.addWidget(self.register_username_input)
+        layout.addLayout(username_layout)
+            
+        # 密码输入
+        password_layout = QHBoxLayout()
+        password_label = QLabel("密码：")
+        self.register_password_input = QLineEdit()
+        self.register_password_input.setEchoMode(QLineEdit.Password)
+        password_layout.addWidget(password_label)
+        password_layout.addWidget(self.register_password_input)
+        layout.addLayout(password_layout)
+            
+        # 确认密码
+        confirm_layout = QHBoxLayout()
+        confirm_label = QLabel("确认密码：")
+        self.register_confirm_input = QLineEdit()
+        self.register_confirm_input.setEchoMode(QLineEdit.Password)
+        confirm_layout.addWidget(confirm_label)
+        confirm_layout.addWidget(self.register_confirm_input)
+        layout.addLayout(confirm_layout)
+            
+        # 地址输入
+        address_layout = QHBoxLayout()
+        address_label = QLabel("收货地址：")
+        self.register_address_input = QLineEdit()
+        address_layout.addWidget(address_label)
+        address_layout.addWidget(self.register_address_input)
+        layout.addLayout(address_layout)
+            
+        # 按钮
+        btn_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        btn_box.accepted.connect(lambda: self.handle_register(dialog))
+        btn_box.rejected.connect(dialog.reject)
+        layout.addWidget(btn_box)
+            
+        dialog.exec_()
+            
+    def handle_register(self, dialog):
+        username = self.register_username_input.text().strip()
+        password = self.register_password_input.text().strip()
+        confirm = self.register_confirm_input.text().strip()
+        address = self.register_address_input.text().strip()
+            
+        if not username or not password:
+            QMessageBox.warning(self, "警告", "用户名和密码不能为空")
+            return
+                
+        if password != confirm:
+            QMessageBox.warning(self, "警告", "两次输入的密码不一致")
+            return
+                
+        try:
+            connection = pymysql.connect(**self.db_config)
+            with connection.cursor() as cursor:
+                # 检查用户名是否已存在
+                cursor.execute("SELECT username FROM customers WHERE username = %s", (username,))
+                if cursor.fetchone():
+                    QMessageBox.warning(self, "警告", "用户名已存在")
+                    return
+                        
+                # 添加新用户
+                cursor.execute(
+                    "INSERT INTO customers (username, password, shipping_address) VALUES (%s, %s, %s)",
+                    (username, password, address)
+                )
+                connection.commit()
+                    
+                QMessageBox.information(self, "成功", "注册成功，请登录")
+                dialog.accept()
+                    
+        except Error as e:
+            connection.rollback()
+            QMessageBox.critical(self, "错误", f"注册失败：{str(e)}")
+        finally:
+            if 'connection' in locals() and connection.open:
+                connection.close()
 
     # 将 ProductWindow 类移出 LoginWindow 类
     class ProductWindow(QMainWindow):
@@ -161,7 +259,7 @@ class LoginWindow(QMainWindow):
             layout.addWidget(self.scroll_area)
             self.load_products()  # 调用加载商品方法
 
-        # 将load_products方法移到类级别
+        # 将 load_products 方法移到类级别
         def load_products(self):
             try:
                 # 清空现有商品列表
@@ -302,7 +400,7 @@ class LoginWindow(QMainWindow):
                         # 添加选择变化事件
                         combo.currentIndexChanged.connect(self.update_sku_info)
                     
-                    # 添加SKU信息显示区域
+                    # 添加 SKU 信息显示区域
                     self.sku_info_label = QLabel("请选择完整规格")
                     self.sku_info_label.setStyleSheet("font-size: 16px; color: #FF9800;")
                     layout.addWidget(self.sku_info_label)
@@ -387,7 +485,7 @@ class LoginWindow(QMainWindow):
             username_layout = QHBoxLayout()
             username_layout.addWidget(self.username_label)
             username_layout.addWidget(self.username_edit_btn)
-            self.profile_form.addRow("用户名:", username_layout)
+            self.profile_form.addRow("用户名：", username_layout)
             
             # 地址显示和修改按钮
             self.address_label = QLabel()
@@ -399,13 +497,13 @@ class LoginWindow(QMainWindow):
             address_layout = QHBoxLayout()
             address_layout.addWidget(self.address_label)
             address_layout.addWidget(self.address_edit_btn)
-            self.profile_form.addRow("收货地址:", address_layout)
+            self.profile_form.addRow("收货地址：", address_layout)
             
             # 密码修改按钮
             self.password_edit_btn = QPushButton("修改密码")
             self.password_edit_btn.setStyleSheet("background-color: #2196F3; color: white;")
             self.password_edit_btn.clicked.connect(self.edit_password)
-            self.profile_form.addRow("密码:", self.password_edit_btn)
+            self.profile_form.addRow("密码：", self.password_edit_btn)
             
             layout.addLayout(self.profile_form)
             layout.addStretch()
@@ -430,7 +528,7 @@ class LoginWindow(QMainWindow):
         
         def edit_username(self):
             new_username, ok = QInputDialog.getText(
-                self, "修改用户名", "请输入新用户名:", 
+                self, "修改用户名", "请输入新用户名：", 
                 QLineEdit.Normal, self.username_label.text()
             )
             
@@ -464,7 +562,7 @@ class LoginWindow(QMainWindow):
         
         def edit_address(self):
             new_address, ok = QInputDialog.getMultiLineText(
-                self, "修改地址", "请输入新地址:", 
+                self, "修改地址", "请输入新地址：", 
                 self.address_label.text()
             )
             
@@ -489,13 +587,13 @@ class LoginWindow(QMainWindow):
         
         def edit_password(self):
             new_password, ok = QInputDialog.getText(
-                self, "修改密码", "请输入新密码:", 
+                self, "修改密码", "请输入新密码：", 
                 QLineEdit.Password
             )
             
             if ok and new_password:
                 confirm_password, ok = QInputDialog.getText(
-                    self, "确认密码", "请再次输入新密码:", 
+                    self, "确认密码", "请再次输入新密码：", 
                     QLineEdit.Password
                 )
                 
@@ -525,7 +623,7 @@ class LoginWindow(QMainWindow):
                 
                 connection = pymysql.connect(**self.db_config)
                 with connection.cursor() as cursor:
-                    # 获取用户ID
+                    # 获取用户 ID
                     cursor.execute("SELECT customer_id FROM customers WHERE username = %s", (self.username,))
                     customer = cursor.fetchone()
                     
@@ -576,7 +674,7 @@ class LoginWindow(QMainWindow):
             name_label.setStyleSheet("font-size: 18px; font-weight: bold;")
             info_layout.addWidget(name_label)
             
-            # 添加SKU规格信息
+            # 添加 SKU 规格信息
             try:
                 connection = pymysql.connect(**self.db_config)
                 with connection.cursor() as cursor:
@@ -596,16 +694,16 @@ class LoginWindow(QMainWindow):
                         spec_label.setWordWrap(True)  # 添加自动换行
                         info_layout.addWidget(spec_label)
             except Error as e:
-                print(f"加载规格信息失败: {str(e)}")
+                print(f"加载规格信息失败：{str(e)}")
             finally:
                 if 'connection' in locals() and connection.open:
                     connection.close()
             
-            price_label = QLabel(f"价格: ¥{item['price']}")
+            price_label = QLabel(f"价格：¥{item['price']}")
             info_layout.addWidget(price_label)
             
             quantity_layout = QHBoxLayout()
-            quantity_label = QLabel("数量:")
+            quantity_label = QLabel("数量：")
             quantity_spin = QSpinBox()
             quantity_spin.setRange(1, item['stock'])
             quantity_spin.setValue(item['quantity'])
@@ -633,17 +731,16 @@ class LoginWindow(QMainWindow):
                 
                 connection = pymysql.connect(**self.db_config)
                 with connection.cursor() as cursor:
-                    # 获取用户ID
+                    # 获取用户 ID
                     cursor.execute("SELECT customer_id FROM customers WHERE username = %s", (self.username,))
                     customer = cursor.fetchone()
                     
                     if customer:
-                        if customer:
                         # 查询订单及商品信息
-                            cursor.execute("""
+                        cursor.execute("""
                             SELECT o.order_id, o.status, o.created_at, 
                                    o.shipped_at, o.delivered_at, o.tracking_number,
-                                   o.shipping_address,
+                                   o.shipping_address,  -- 直接从 orders 表获取地址
                                    oi.order_item_id, oi.quantity, oi.price_at_order,
                                    p.name, p.main_image
                             FROM orders o
@@ -655,7 +752,7 @@ class LoginWindow(QMainWindow):
                         """, (customer['customer_id'],))
                         orders = cursor.fetchall()
                         
-                        # 按订单ID分组
+                        # 按订单 ID 分组
                         orders_dict = {}
                         for item in orders:
                             if item['order_id'] not in orders_dict:
@@ -688,13 +785,13 @@ class LoginWindow(QMainWindow):
             }
             status_text = status_map.get(order_info['status'], order_info['status'])
             
-            order_header = QLabel(f"订单号: {order_info['order_id']} | 状态: {status_text} | 下单时间: {order_info['created_at']}")
+            order_header = QLabel(f"订单号：{order_info['order_id']} | 状态：{status_text} | 下单时间：{order_info['created_at']}")
             order_header.setStyleSheet("font-size: 16px; font-weight: bold;")
             layout.addWidget(order_header)
             
             # 添加收货地址
             if order_info.get('shipping_address'):
-                address_label = QLabel(f"收货地址: {order_info['shipping_address']}")
+                address_label = QLabel(f"收货地址：{order_info['shipping_address']}")
                 address_label.setWordWrap(True)
                 layout.addWidget(address_label)
             
@@ -718,7 +815,7 @@ class LoginWindow(QMainWindow):
                 name_label = QLabel(item['name'])
                 info_layout.addWidget(name_label)
                 
-                price_label = QLabel(f"价格: ¥{item['price_at_order']} x {item['quantity']}")
+                price_label = QLabel(f"价格：¥{item['price_at_order']} x {item['quantity']}")
                 info_layout.addWidget(price_label)
                 
                 item_layout.addLayout(info_layout)
@@ -726,16 +823,16 @@ class LoginWindow(QMainWindow):
             
             # 订单总价
             total_price = sum(item['price_at_order'] * item['quantity'] for item in items)
-            total_label = QLabel(f"订单总价: ¥{total_price:.2f}")
+            total_label = QLabel(f"订单总价：¥{total_price:.2f}")
             total_label.setStyleSheet("font-size: 16px; font-weight: bold;")
             layout.addWidget(total_label)
             
             # 物流信息
             if order_info['tracking_number']:
-                tracking_label = QLabel(f"物流单号: {order_info['tracking_number']}")
+                tracking_label = QLabel(f"物流单号：{order_info['tracking_number']}")
                 layout.addWidget(tracking_label)
             
-            # 添加确认收货按钮(仅显示正在派送的订单)
+            # 添加确认收货按钮 (仅显示正在派送的订单)
             if order_info['status'] == 'shipped':
                 confirm_btn = QPushButton("确认收货")
                 confirm_btn.clicked.connect(lambda _, o=order_info: self.confirm_delivery(o))
@@ -804,7 +901,7 @@ class LoginWindow(QMainWindow):
             try:
                 connection = pymysql.connect(**self.db_config)
                 with connection.cursor() as cursor:
-                    # 获取用户ID和地址
+                    # 获取用户 ID 和地址
                     cursor.execute("""
                         SELECT customer_id, shipping_address 
                         FROM customers 
@@ -824,7 +921,7 @@ class LoginWindow(QMainWindow):
                         cart_items = cursor.fetchall()
                         
                         if cart_items:
-                            # 创建订单(包含地址)
+                            # 创建订单 (包含地址)
                             cursor.execute("""
                                 INSERT INTO orders (customer_id, status, shipping_address)
                                 VALUES (%s, 'paid', %s)
@@ -873,7 +970,7 @@ class LoginWindow(QMainWindow):
                 
                 connection = pymysql.connect(**self.db_config)
                 with connection.cursor() as cursor:
-                    # 查询匹配的SKU
+                    # 查询匹配的 SKU
                     cursor.execute("""
                         SELECT s.sku_id, s.price, s.stock
                         FROM skus s
@@ -890,7 +987,7 @@ class LoginWindow(QMainWindow):
                     if sku:
                         stock_status = "有货" if sku['stock'] > 0 else "无货"
                         self.sku_info_label.setText(
-                            f"当前选择: ¥{sku['price']} | 库存: {sku['stock']}件 | 状态: {stock_status}"
+                            f"当前选择：¥{sku['price']} | 库存：{sku['stock']}件 | 状态：{stock_status}"
                         )
                         self.sku_info_label.setStyleSheet(
                             "font-size: 16px; color: #4CAF50;" if sku['stock'] > 0 
@@ -900,7 +997,7 @@ class LoginWindow(QMainWindow):
                         self.sku_info_label.setText("该规格组合无货")
                         self.sku_info_label.setStyleSheet("font-size: 16px; color: #F44336;")
             except Error as e:
-                print(f"更新SKU信息失败: {str(e)}")
+                print(f"更新 SKU 信息失败：{str(e)}")
             finally:
                 if 'connection' in locals() and connection.open:
                     connection.close()
@@ -911,10 +1008,10 @@ class LoginWindow(QMainWindow):
                 for spec_type_id, combo in self.spec_combos.items():
                     selected_specs[spec_type_id] = combo.currentData()
                 
-                # 查询匹配的SKU
+                # 查询匹配的 SKU
                 connection = pymysql.connect(**self.db_config)
                 with connection.cursor() as cursor:
-                    # 查询匹配的SKU
+                    # 查询匹配的 SKU
                     cursor.execute("""
                         SELECT s.sku_id, s.price, s.stock
                         FROM skus s
@@ -928,7 +1025,7 @@ class LoginWindow(QMainWindow):
                     sku = cursor.fetchone()
                     
                     if sku:
-                        # 获取用户ID
+                        # 获取用户 ID
                         cursor.execute("SELECT customer_id FROM customers WHERE username = %s", (self.username,))
                         customer = cursor.fetchone()
                         
@@ -944,7 +1041,7 @@ class LoginWindow(QMainWindow):
                             else:
                                 cart_id = cart['cart_id']
                             
-                            # 检查购物车中是否已有该SKU
+                            # 检查购物车中是否已有该 SKU
                             cursor.execute("""
                                 SELECT cart_item_id, quantity 
                                 FROM cart_items 
@@ -972,9 +1069,9 @@ class LoginWindow(QMainWindow):
                                 f"已添加 {product['name']} (SKU: {sku['sku_id']}) 到购物车")
                             self.load_cart_items()  # 刷新购物车
                     else:
-                        QMessageBox.warning(self, "错误", "找不到匹配的SKU")
+                        QMessageBox.warning(self, "错误", "找不到匹配的 SKU")
             except Error as e:
-                QMessageBox.critical(self, "错误", f"添加到购物车失败: {str(e)}")
+                QMessageBox.critical(self, "错误", f"添加到购物车失败：{str(e)}")
             finally:
                 if 'connection' in locals() and connection.open:
                     connection.close()
@@ -982,7 +1079,7 @@ class LoginWindow(QMainWindow):
         def __init__(self, username, is_manager):
             super().__init__()
             self.username = username
-            self.is_manager = is_manager  # True表示店长，False表示普通店员
+            self.is_manager = is_manager  # True 表示店长，False 表示普通店员
             self.setWindowTitle(f"店员管理面板 - 欢迎 {username}")
             self.setFixedSize(1200, 800)
             
@@ -1061,11 +1158,11 @@ class LoginWindow(QMainWindow):
             
             # 商品名称
             self.product_name_input = QLineEdit()
-            form_layout.addRow("商品名称:", self.product_name_input)
+            form_layout.addRow("商品名称：", self.product_name_input)
             
             # 商品描述
             self.product_desc_input = QTextEdit()
-            form_layout.addRow("商品描述:", self.product_desc_input)
+            form_layout.addRow("商品描述：", self.product_desc_input)
             
             # 商品图片
             self.product_image_input = QLineEdit()
@@ -1074,7 +1171,7 @@ class LoginWindow(QMainWindow):
             image_layout = QHBoxLayout()
             image_layout.addWidget(self.product_image_input)
             image_layout.addWidget(self.browse_image_btn)
-            form_layout.addRow("商品图片:", image_layout)
+            form_layout.addRow("商品图片：", image_layout)
             
             layout.addLayout(form_layout)
             
@@ -1099,26 +1196,26 @@ class LoginWindow(QMainWindow):
             self.spec_group.setLayout(self.spec_layout)
             layout.addWidget(self.spec_group)
             
-            # SKU管理区域
-            #self.sku_group = QGroupBox("SKU管理")
+            # SKU 管理区域
+            #self.sku_group = QGroupBox("SKU 管理")
             #self.sku_group.setStyleSheet("QGroupBox { padding: 10px; }")
             #self.sku_layout = QVBoxLayout()
             
-            # SKU表格
+            # SKU 表格
             #self.sku_table = QTableWidget()
             #self.sku_table.setColumnCount(3)
             #self.sku_table.setHorizontalHeaderLabels(["规格组合", "价格", "库存"])
             #self.sku_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
             #self.sku_table.setColumnWidth(1, 100)
             #self.sku_table.setColumnWidth(2, 100)
-            #self.sku_table.setRowCount(0)  # 初始设置为0行
+            #self.sku_table.setRowCount(0)  # 初始设置为 0 行
             # 确保表格被添加到布局中
             #self.sku_layout.addWidget(self.sku_table)
             # self.sku_group.setLayout(self.sku_layout)
             #layout.addWidget(self.sku_group)
             
-            # 添加SKU按钮
-            #self.add_sku_btn = QPushButton("添加SKU")
+            # 添加 SKU 按钮
+            #self.add_sku_btn = QPushButton("添加 SKU")
             #self.add_sku_btn.clicked.connect(self.add_sku)
             #layout.addWidget(self.add_sku_btn)
             
@@ -1213,11 +1310,11 @@ class LoginWindow(QMainWindow):
                         item.setData(Qt.UserRole, value['spec_value_id'])
                         value_list.addItem(item)
                     
-                    layout.addWidget(QLabel(f"现有{spec_type_name}规格值:"))
+                    layout.addWidget(QLabel(f"现有{spec_type_name}规格值："))
                     layout.addWidget(value_list)
                     
                     # 添加新规格值区域
-                    layout.addWidget(QLabel("或添加新规格值:"))
+                    layout.addWidget(QLabel("或添加新规格值："))
                     new_value_input = QLineEdit()
                     layout.addWidget(new_value_input)
                     
@@ -1246,10 +1343,10 @@ class LoginWindow(QMainWindow):
                             self.spec_table.setItem(row, 0, QTableWidgetItem(spec_type_name))
                             self.spec_table.setItem(row, 1, QTableWidgetItem(selected_value))
                             
-                            # 不再自动生成SKU，改为提示用户手动生成
+                            # 不再自动生成 SKU，改为提示用户手动生成
                             QMessageBox.information(
                                 self, '提示', 
-                                '规格值已添加，请手动点击"添加SKU"按钮生成SKU记录'
+                                '规格值已添加，请手动点击"添加 SKU"按钮生成 SKU 记录'
                             )
             except Error as e:
                 QMessageBox.critical(self, "错误", f"操作规格值失败：{str(e)}")
@@ -1257,7 +1354,7 @@ class LoginWindow(QMainWindow):
                 if 'connection' in locals() and connection.open:
                     connection.close()
         def add_sku_from_specs(self):
-            """从规格表中生成SKU记录"""
+            """从规格表中生成 SKU 记录"""
             if self.spec_table.rowCount() == 0:
                 QMessageBox.warning(self, "警告", "请先添加规格值")
                 return
@@ -1275,7 +1372,7 @@ class LoginWindow(QMainWindow):
                     #QMessageBox.warning(self, "警告", "该规格组合已存在")
                     #return
                     
-            # 添加新SKU记录
+            # 添加新 SKU 记录
             #row = self.sku_table.rowCount()
             #self.sku_table.insertRow(row)
             #self.sku_table.setItem(row, 0, QTableWidgetItem(" | ".join(specs)))
@@ -1292,34 +1389,34 @@ class LoginWindow(QMainWindow):
             self.spec_table.setRowCount(0)
             # 直接弹出对话框设置价格和库存
             price, ok1 = QInputDialog.getDouble(
-                self, "设置价格", "请输入价格:", 
+                self, "设置价格", "请输入价格：", 
                 0, 0, 10000, 2
             )
             
             if ok1:
                 stock, ok2 = QInputDialog.getInt(
-                    self, "设置库存", "请输入库存:", 
+                    self, "设置库存", "请输入库存：", 
                     0, 0, 10000
                 )
                 
                 if ok2:
-                    # 这里可以添加逻辑将SKU信息保存到数据库或内存中
-                    QMessageBox.information(self, "成功", f"SKU已添加\n规格: {' | '.join(specs)}\n价格: ¥{price:.2f}\n库存: {stock}件")
+                    # 这里可以添加逻辑将 SKU 信息保存到数据库或内存中
+                    QMessageBox.information(self, "成功", f"SKU 已添加\n规格：{' | '.join(specs)}\n价格：¥{price:.2f}\n库存：{stock}件")
 
         def add_sku(self):
-            """为当前规格组合创建SKU记录"""
+            """为当前规格组合创建 SKU 记录"""
             # 检查规格表中是否有规格值
             if self.spec_table.rowCount() > 0:
-                # 如果有规格值，先调用add_sku_from_specs生成SKU记录
+                # 如果有规格值，先调用 add_sku_from_specs 生成 SKU 记录
                 self.add_sku_from_specs()
                 return
                 
-            # 检查SKU表中是否有待设置的SKU记录
+            # 检查 SKU 表中是否有待设置的 SKU 记录
             if self.sku_table.rowCount() == 0:
                 QMessageBox.warning(self, "警告", "请先添加规格组合")
                 return
                 
-            # 获取最后添加的SKU记录(最新添加的)
+            # 获取最后添加的 SKU 记录 (最新添加的)
             last_row = self.sku_table.rowCount() - 1
             sku_item = self.sku_table.item(last_row, 0)
             
@@ -1329,7 +1426,7 @@ class LoginWindow(QMainWindow):
                 
             # 设置价格
             price, ok1 = QInputDialog.getDouble(
-                self, "设置价格", "请输入价格:", 
+                self, "设置价格", "请输入价格：", 
                 0, 0, 10000, 2
             )
             if ok1:
@@ -1337,7 +1434,7 @@ class LoginWindow(QMainWindow):
                 
             # 设置库存
             stock, ok2 = QInputDialog.getInt(
-                self, "设置库存", "请输入库存:", 
+                self, "设置库存", "请输入库存：", 
                 0, 0, 10000
             )
             if ok2:
@@ -1376,9 +1473,9 @@ class LoginWindow(QMainWindow):
                         spec_value = self.spec_table.item(row, 1).text()
                         specs.append(f"{spec_type}:{spec_value}")
                     
-                    # 添加SKU信息
+                    # 添加 SKU 信息
                     price, ok1 = QInputDialog.getDouble(
-                        self, "设置价格", "请输入价格:", 
+                        self, "设置价格", "请输入价格：", 
                         0, 0, 10000, 2
                     )
                     
@@ -1386,7 +1483,7 @@ class LoginWindow(QMainWindow):
                         return
                         
                     stock, ok2 = QInputDialog.getInt(
-                        self, "设置库存", "请输入库存:", 
+                        self, "设置库存", "请输入库存：", 
                         0, 0, 10000
                     )
                     
@@ -1399,7 +1496,7 @@ class LoginWindow(QMainWindow):
                     )
                     sku_id = cursor.lastrowid
                     
-                    # 添加规格组合到sku_specs表
+                    # 添加规格组合到 sku_specs 表
                     for spec in specs:
                         spec_type, spec_value = spec.split(":")
                         cursor.execute("""
@@ -1449,7 +1546,7 @@ class LoginWindow(QMainWindow):
             self.product_list.itemClicked.connect(self.load_product_skus)
             layout.addWidget(self.product_list)
             
-            # SKU表格
+            # SKU 表格
             self.sku_table = QTableWidget()
             self.sku_table.setColumnCount(4)
             self.sku_table.setHorizontalHeaderLabels(["规格组合", "价格", "库存", "操作"])
@@ -1488,7 +1585,7 @@ class LoginWindow(QMainWindow):
             try:
                 connection = pymysql.connect(**self.db_config)
                 with connection.cursor() as cursor:
-                    # 查询商品的所有SKU
+                    # 查询商品的所有 SKU
                     cursor.execute("""
                         SELECT s.sku_id, s.price, s.stock, 
                                GROUP_CONCAT(sv.value ORDER BY st.spec_type_id SEPARATOR ', ') as specs
@@ -1509,12 +1606,12 @@ class LoginWindow(QMainWindow):
                         # 规格组合
                         self.sku_table.setItem(row, 0, QTableWidgetItem(sku['specs']))
                         
-                        # 价格(可编辑)
+                        # 价格 (可编辑)
                         price_item = QTableWidgetItem(str(sku['price']))
                         price_item.setFlags(price_item.flags() | Qt.ItemIsEditable)
                         self.sku_table.setItem(row, 1, price_item)
                         
-                        # 库存(可编辑)
+                        # 库存 (可编辑)
                         stock_item = QTableWidgetItem(str(sku['stock']))
                         stock_item.setFlags(stock_item.flags() | Qt.ItemIsEditable)
                         self.sku_table.setItem(row, 2, stock_item)
@@ -1524,10 +1621,10 @@ class LoginWindow(QMainWindow):
                         save_btn.clicked.connect(lambda _, r=row: self.save_sku_changes(r))
                         self.sku_table.setCellWidget(row, 3, save_btn)
                         
-                        # 保存SKU ID
+                        # 保存 SKU ID
                         self.sku_table.item(row, 0).setData(Qt.UserRole, sku['sku_id'])
             except Error as e:
-                QMessageBox.critical(self, "错误", f"加载SKU失败：{str(e)}")
+                QMessageBox.critical(self, "错误", f"加载 SKU 失败：{str(e)}")
             finally:
                 if 'connection' in locals() and connection.open:
                     connection.close()
@@ -1669,36 +1766,36 @@ class LoginWindow(QMainWindow):
             }
             status_text = status_map.get(order['status'], order['status'])
             
-            order_header = QLabel(f"订单号: {order['order_id']} | 状态: {status_text} | 买家: {order['customer_name']}")
+            order_header = QLabel(f"订单号：{order['order_id']} | 状态：{status_text} | 买家：{order['customer_name']}")
             order_header.setStyleSheet("font-size: 16px; font-weight: bold;")
             layout.addWidget(order_header)
             
             # 时间信息
-            time_info = QLabel(f"下单时间: {order['created_at']}")
+            time_info = QLabel(f"下单时间：{order['created_at']}")
             if order['shipped_at']:
-                time_info.setText(time_info.text() + f" | 发货时间: {order['shipped_at']}")
+                time_info.setText(time_info.text() + f" | 发货时间：{order['shipped_at']}")
             if order['delivered_at']:
-                time_info.setText(time_info.text() + f" | 送达时间: {order['delivered_at']}")
+                time_info.setText(time_info.text() + f" | 送达时间：{order['delivered_at']}")
             layout.addWidget(time_info)
             
             # 收货地址
             if order['shipping_address']:
-                address_label = QLabel(f"收货地址: {order['shipping_address']}")
+                address_label = QLabel(f"收货地址：{order['shipping_address']}")
                 address_label.setWordWrap(True)
                 layout.addWidget(address_label)
             
             # 商品信息
             if order['product_names']:
-                products_label = QLabel(f"商品: {order['product_names']}")
+                products_label = QLabel(f"商品：{order['product_names']}")
                 products_label.setWordWrap(True)
                 layout.addWidget(products_label)
             
             # 物流信息
             if order['tracking_number']:
-                tracking_label = QLabel(f"快递单号: {order['tracking_number']}")
+                tracking_label = QLabel(f"快递单号：{order['tracking_number']}")
                 layout.addWidget(tracking_label)
             
-            # 发货按钮(仅显示待发货订单)
+            # 发货按钮 (仅显示待发货订单)
             if order['status'] == 'paid':
                 ship_btn = QPushButton("发货")
                 ship_btn.clicked.connect(lambda _, o=order: self.ship_order(o))
@@ -1716,7 +1813,7 @@ class LoginWindow(QMainWindow):
             
             # 快递单号输入
             tracking_layout = QHBoxLayout()
-            tracking_label = QLabel("快递单号:")
+            tracking_label = QLabel("快递单号：")
             self.tracking_input = QLineEdit()
             tracking_layout.addWidget(tracking_label)
             tracking_layout.addWidget(self.tracking_input)
@@ -1794,7 +1891,7 @@ class LoginWindow(QMainWindow):
             try:
                 connection = pymysql.connect(**self.db_config)
                 with connection.cursor() as cursor:
-                    # 修改查询语句，使用staff表而不是staffs表
+                    # 修改查询语句，使用 staff 表而不是 staffs 表
                     cursor.execute("SELECT staff_id, name, password, role FROM staff")
                     staffs = cursor.fetchall()
                     
@@ -1802,10 +1899,10 @@ class LoginWindow(QMainWindow):
                     for row, staff in enumerate(staffs):
                         self.staff_table.insertRow(row)
                         
-                        # 用户名改为name字段
+                        # 用户名改为 name 字段
                         self.staff_table.setItem(row, 0, QTableWidgetItem(staff['name']))
                         
-                        # 密码(可编辑)
+                        # 密码 (可编辑)
                         password_item = QTableWidgetItem(staff['password'])
                         password_item.setFlags(password_item.flags() | Qt.ItemIsEditable)
                         self.staff_table.setItem(row, 1, password_item)
@@ -1829,7 +1926,7 @@ class LoginWindow(QMainWindow):
                         widget.setLayout(btn_layout)
                         self.staff_table.setCellWidget(row, 2, widget)
                         
-                        # 保存staff_id
+                        # 保存 staff_id
                         self.staff_table.item(row, 0).setData(Qt.UserRole, staff['staff_id'])
             except Error as e:
                 QMessageBox.critical(self, "错误", f"加载店员列表失败：{str(e)}")
@@ -1846,7 +1943,7 @@ class LoginWindow(QMainWindow):
             
             # 用户名输入
             username_layout = QHBoxLayout()
-            username_label = QLabel("用户名:")
+            username_label = QLabel("用户名：")
             self.new_username_input = QLineEdit()
             username_layout.addWidget(username_label)
             username_layout.addWidget(self.new_username_input)
@@ -1854,7 +1951,7 @@ class LoginWindow(QMainWindow):
             
             # 密码输入
             password_layout = QHBoxLayout()
-            password_label = QLabel("密码:")
+            password_label = QLabel("密码：")
             self.new_password_input = QLineEdit()
             self.new_password_input.setEchoMode(QLineEdit.Password)
             password_layout.addWidget(password_label)
@@ -1863,7 +1960,7 @@ class LoginWindow(QMainWindow):
             
             # 确认密码
             confirm_layout = QHBoxLayout()
-            confirm_label = QLabel("确认密码:")
+            confirm_label = QLabel("确认密码：")
             self.confirm_password_input = QLineEdit()
             self.confirm_password_input.setEchoMode(QLineEdit.Password)
             confirm_layout.addWidget(confirm_label)
@@ -1901,7 +1998,7 @@ class LoginWindow(QMainWindow):
                         QMessageBox.warning(self, "警告", "用户名已存在")
                         return
                         
-                    # 添加新店员，role默认为False(普通店员)
+                    # 添加新店员，role 默认为 False(普通店员)
                     cursor.execute(
                         "INSERT INTO staff (name, password, role) VALUES (%s, %s, 0)",
                         (username, password)
@@ -1975,21 +2072,70 @@ class LoginWindow(QMainWindow):
                     if 'connection' in locals() and connection.open:
                         connection.close()
         def init_sales_stats_tab(self):
+            # 销量统计页实现
             layout = QVBoxLayout(self.sales_stats_tab)
             
-            # 标题
-            title_label = QLabel("销量统计")
-            title_label.setStyleSheet("font-size: 24px; font-weight: bold;")
-            title_label.setAlignment(Qt.AlignCenter)
-            layout.addWidget(title_label)
+            # 商品销售饼图
+            self.product_chart_view = QChartView()
+            self.product_chart_view.setRenderHint(QPainter.Antialiasing)
+            layout.addWidget(QLabel("商品销售占比"))
+            layout.addWidget(self.product_chart_view)
             
-            # 这里可以添加销量统计的具体UI组件
-            # 例如: 时间范围选择、统计图表等
+            # 买家消费饼图
+            self.customer_chart_view = QChartView()
+            self.customer_chart_view.setRenderHint(QPainter.Antialiasing)
+            layout.addWidget(QLabel("买家消费占比"))
+            layout.addWidget(self.customer_chart_view)
             
-            # 占位文本，后续可以替换为实际功能
-            placeholder = QLabel("销量统计功能开发中...")
-            placeholder.setAlignment(Qt.AlignCenter)
-            layout.addWidget(placeholder)
+            # 刷新按钮
+            refresh_btn = QPushButton("刷新数据")
+            refresh_btn.clicked.connect(self.load_sales_stats)
+            layout.addWidget(refresh_btn)
+            
+            # 初始加载数据
+            self.load_sales_stats()
+        
+        def load_sales_stats(self):
+            try:
+                connection = pymysql.connect(**self.db_config)
+                with connection.cursor() as cursor:
+                    # 加载商品销售数据
+                    cursor.execute("SELECT product_name, total_sales FROM product_sales_view ORDER BY total_sales DESC LIMIT 10")
+                    product_data = cursor.fetchall()
+                    
+                    # 创建商品销售饼图
+                    product_chart = QChart()
+                    product_chart.setTitle("商品销售 TOP10")
+                    product_series = QPieSeries()
+                    
+                    for product in product_data:
+                        product_series.append(product['product_name'], product['total_sales'])
+                    
+                    product_chart.addSeries(product_series)
+                    product_chart.legend().setAlignment(Qt.AlignRight)
+                    self.product_chart_view.setChart(product_chart)
+                    
+                    # 加载买家消费数据
+                    cursor.execute("SELECT username, total_spending FROM customer_spending_view ORDER BY total_spending DESC LIMIT 10")
+                    customer_data = cursor.fetchall()
+                    
+                    # 创建买家消费饼图
+                    customer_chart = QChart()
+                    customer_chart.setTitle("买家消费 TOP10")
+                    customer_series = QPieSeries()
+                    
+                    for customer in customer_data:
+                        customer_series.append(customer['username'], customer['total_spending'])
+                    
+                    customer_chart.addSeries(customer_series)
+                    customer_chart.legend().setAlignment(Qt.AlignRight)
+                    self.customer_chart_view.setChart(customer_chart)
+                    
+            except Error as e:
+                QMessageBox.critical(self, "错误", f"加载销售统计失败：{str(e)}")
+            finally:
+                if 'connection' in locals() and connection.open:
+                    connection.close()
 
     def handle_login(self):
         username = self.username_input.text().strip()
