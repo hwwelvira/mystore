@@ -243,7 +243,16 @@ class LoginWindow(QMainWindow):
         def init_products_tab(self):
             # 商品浏览页（原商品展示功能）
             layout = QVBoxLayout(self.products_tab)
-            
+            # 添加搜索框
+            search_layout = QHBoxLayout()
+            self.search_input = QLineEdit()
+            self.search_input.setPlaceholderText("输入商品名称搜索...")
+            search_btn = QPushButton("搜索")
+            search_btn.clicked.connect(self.search_products)
+            search_layout.addWidget(self.search_input)
+            search_layout.addWidget(search_btn)
+            layout.addLayout(search_layout)
+
             self.title_label = QLabel("商品列表")
             self.title_label.setStyleSheet("font-size: 24px; font-weight: bold;")
             self.title_label.setAlignment(Qt.AlignCenter)
@@ -259,6 +268,30 @@ class LoginWindow(QMainWindow):
             layout.addWidget(self.scroll_area)
             self.load_products()  # 调用加载商品方法
 
+        def search_products(self):
+            keyword = self.search_input.text().strip()
+            try:
+                # 清空现有商品列表
+                for i in reversed(range(self.scroll_layout.count())): 
+                    self.scroll_layout.itemAt(i).widget().setParent(None)
+                
+                connection = pymysql.connect(**self.db_config)
+                with connection.cursor() as cursor:
+                    # 使用LIKE进行模糊搜索
+                    cursor.execute("""
+                        SELECT product_id, name, description, main_image 
+                        FROM products 
+                        WHERE name LIKE %s AND is_delete = 0
+                    """, (f"%{keyword}%",))
+                    products = cursor.fetchall()
+                    
+                    for product in products:
+                        self.add_product_item(product)
+            except Error as e:
+                QMessageBox.critical(self, "错误", f"搜索商品失败：{str(e)}")
+            finally:
+                if 'connection' in locals() and connection.open:
+                    connection.close()
         # 将 load_products 方法移到类级别
         def load_products(self):
             try:
