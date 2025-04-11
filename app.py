@@ -1,5 +1,7 @@
 import sys
 import os
+import shutil
+import time
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
 from PyQt5.QtCore import *
@@ -376,7 +378,7 @@ class LoginWindow(QMainWindow):
             if product['main_image']:
                 image_label = QLabel()
                 try:
-                    pixmap = QPixmap(product['main_image'])
+                    pixmap = QPixmap(resource_path(product['main_image']))
                     if not pixmap.isNull():
                         image_label.setPixmap(pixmap.scaled(400, 400, Qt.KeepAspectRatio))
                         image_label.setAlignment(Qt.AlignCenter)
@@ -705,7 +707,7 @@ class LoginWindow(QMainWindow):
             if item['main_image']:
                 image_label = QLabel()
                 try:
-                    pixmap = QPixmap(item['main_image'])
+                    pixmap = QPixmap(resource_path(item['main_image']))
                     if not pixmap.isNull():
                         image_label.setPixmap(pixmap.scaled(150, 150, Qt.KeepAspectRatio))
                         layout.addWidget(image_label)
@@ -848,7 +850,7 @@ class LoginWindow(QMainWindow):
                 if item['main_image']:
                     image_label = QLabel()
                     try:
-                        pixmap = QPixmap(item['main_image'])
+                        pixmap = QPixmap(resource_path(item['main_image']))
                         if not pixmap.isNull():
                             image_label.setPixmap(pixmap.scaled(100, 100, Qt.KeepAspectRatio))
                             item_layout.addWidget(image_label)
@@ -1211,6 +1213,8 @@ class LoginWindow(QMainWindow):
             
             # 商品图片
             self.product_image_input = QLineEdit()
+            self.product_image_input.setPlaceholderText("请点击浏览按钮选择图片")
+            self.product_image_input.setReadOnly(True)  # 设为只读，强制用户使用浏览按钮
             self.browse_image_btn = QPushButton("浏览...")
             self.browse_image_btn.clicked.connect(self.browse_image)
             image_layout = QHBoxLayout()
@@ -1283,11 +1287,33 @@ class LoginWindow(QMainWindow):
             self.add_product_tab.layout().setContentsMargins(0, 0, 0, 0)
         
         def browse_image(self):
-            file_path, _ = QFileDialog.getOpenFileName(self, "选择商品图片", "", "图片文件 (*.png *.jpg *.jpeg)")
+            # 修改浏览图片方法，返回绝对路径
+            file_path, _ = QFileDialog.getOpenFileName(
+                self, "选择商品图片", 
+                "", 
+                "图片文件 (*.png *.jpg *.jpeg)"
+            )
+            
             if file_path:
-                # 转换为相对路径
-                rel_path = file_path.replace(os.getcwd(), "").lstrip("\\/")
-                self.product_image_input.setText(rel_path)
+                # 将图片复制到项目目录的image文件夹下
+                images_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "image")
+                if not os.path.exists(images_dir):
+                    os.makedirs(images_dir)
+                
+                # 生成新的文件名
+                timestamp = str(int(time.time()))
+                ext = os.path.splitext(file_path)[1]
+                new_filename = f"product_{timestamp}{ext}"
+                new_path = os.path.join(images_dir, new_filename)
+                
+                # 复制文件
+                try:
+                    shutil.copy2(file_path, new_path)
+                    # 存储相对路径
+                    relative_path = os.path.join("image", new_filename).replace("\\", "/")
+                    self.product_image_input.setText(relative_path)
+                except Exception as e:
+                    QMessageBox.warning(self, "错误", f"图片复制失败: {str(e)}")
         def show_add_spec_dialog(self):
             # 第一步：选择规格类型
             try:
