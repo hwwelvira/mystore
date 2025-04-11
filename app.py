@@ -9,6 +9,18 @@ from PyQt5.QtChart import QChart, QChartView, QPieSeries
 from PyQt5.QtGui import QPainter
 
 
+def resource_path(relative_path):
+    """ 获取资源绝对路径 """
+    if hasattr(sys, '_MEIPASS'):
+        # 打包后临时文件夹路径
+        base_path = sys._MEIPASS
+    else:
+        # 开发环境路径
+        base_path = os.path.abspath(".")
+
+    return os.path.join(base_path, relative_path)
+
+
 class LoginWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -323,7 +335,7 @@ class LoginWindow(QMainWindow):
             if product['main_image']:
                 image_label = QLabel()
                 try:
-                    pixmap = QPixmap(product['main_image'])
+                    pixmap = QPixmap(resource_path(product['main_image']))
                     if not pixmap.isNull():
                         image_label.setPixmap(pixmap.scaled(200, 200, Qt.KeepAspectRatio))
                         layout.addWidget(image_label)
